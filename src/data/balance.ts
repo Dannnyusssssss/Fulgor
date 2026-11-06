@@ -1,0 +1,150 @@
+/**
+ * Valores de equilibrio y de configuración del juego. Nada de números mágicos dispersos:
+ * todo lo que se ajusta vive aquí o en los otros archivos de `src/data/`.
+ */
+export type Quality = 'low' | 'medium' | 'high';
+
+export const BALANCE = {
+  sim: {
+    /** Frecuencia de la lógica. */
+    stepHz: 60,
+    /** Tope de tiempo real por frame. */
+    maxFrameSeconds: 0.25,
+  },
+
+  /** Duración mínima de cualquier aviso de ataque enemigo (ninguna IA puede atacar antes). */
+  telegraph: {
+    minSeconds: 0.4,
+  },
+
+  /** Multiplicador de daño recibido (la dificultad Fácil/Normal/Difícil llega en el Hito 2). */
+  difficulty: {
+    damageTakenMultiplier: 1,
+  },
+
+  player: {
+    radius: 0.45,
+    speed: 6,
+    /** Multiplicador de velocidad mientras se apunta con precisión. */
+    aimSpeedMultiplier: 0.55,
+    /** Qué tan rápido la velocidad alcanza la deseada (suavizado exponencial). */
+    acceleration: 18,
+    maxHealth: 100,
+    maxShield: 50,
+    /** Segundos sin recibir daño antes de que el escudo empiece a regenerarse. */
+    shieldRegenDelay: 3,
+    /** Escudo recuperado por segundo. */
+    shieldRegenRate: 15,
+    /** Bajo este porcentaje de vida se muestra el aviso de vida baja. */
+    lowHealthFraction: 0.3,
+    dodge: {
+      duration: 0.22,
+      speed: 15,
+      invulnerability: 0.26,
+      cooldown: 0.9,
+    },
+  },
+
+  /** Presupuesto de destellos: como máximo 3 en cualquier ventana de 1 s. */
+  flash: {
+    maxPerWindow: 3,
+    windowSeconds: 1,
+  },
+
+  /** Aparición provisional de enemigos (el director de oleadas llega en el Hito 2). */
+  spawn: {
+    firstWaveCount: 4,
+    perWaveIncrement: 2,
+    maxAlive: 24,
+    /** Descanso entre oleadas. */
+    restSeconds: 4,
+    /** Separación entre apariciones de una misma oleada. */
+    intervalSeconds: 0.7,
+    /** Distancia mínima al jugador de un punto de aparición. */
+    minDistanceFromPlayer: 10,
+    /** Duración de la materialización: el enemigo no se mueve, no ataca y no recibe daño. */
+    materializeSeconds: 0.8,
+  },
+
+  /** Navegación de enemigos por mapa de distancias. */
+  nav: {
+    cellSize: 0.5,
+    /** El mapa se recalcula cada tantos pasos fijos (6 pasos = 10 veces por segundo). */
+    recomputeEverySteps: 6,
+  },
+
+  /** Separación entre enemigos para que no se apilen. */
+  separation: {
+    strength: 6,
+  },
+
+  /** Capacidades de los pools (tamaño máximo fijo). */
+  pools: {
+    projectiles: 256,
+    enemies: 64,
+    events: 512,
+  },
+
+  score: {
+    zumbador: 100,
+  },
+
+  camera: {
+    /** Distancia de la cámara detrás del personaje. */
+    distance: 4.2,
+    /** Distancia mientras se apunta con precisión. */
+    aimDistance: 2.6,
+    /** Altura del punto de giro (hombros de Chispa). */
+    pivotHeight: 1.45,
+    /** Desplazamiento lateral sobre el hombro. */
+    shoulderOffset: 0.75,
+    shoulderOffsetAim: 0.6,
+    /** Límites de inclinación vertical, en radianes (negativo = mirar hacia abajo). */
+    pitchMin: -0.55,
+    pitchMax: 0.35,
+    pitchDefault: -0.18,
+    /** Suavizados (independientes de los FPS). */
+    followSharpness: 20,
+    distanceSharpness: 10,
+    shoulderSharpness: 8,
+    /** Margen con paredes y coberturas. */
+    collisionPadding: 0.3,
+    /** Distancia mínima de la cámara al pivote si hay un obstáculo. */
+    minDistance: 0.6,
+    /** Radianes por píxel de ratón con sensibilidad 1. */
+    mouseRadiansPerPixel: 0.0024,
+    /** Velocidad de giro con flechas (rad/s) con sensibilidad 1. */
+    arrowYawSpeed: 2.4,
+    arrowPitchSpeed: 1.2,
+    /** Tope de píxeles de ratón por evento, para ignorar saltos anómalos. */
+    maxLookPerEvent: 150,
+    fovMin: 60,
+    fovMax: 100,
+    fovDefault: 75,
+    sensitivityMin: 0.2,
+    sensitivityMax: 3,
+    sensitivityDefault: 1,
+    /** Distancia máxima a la que se dibuja la retícula del suelo. */
+    reticleMaxDistance: 14,
+  },
+
+  /** Ajustes de render por calidad. */
+  quality: {
+    low: { dprCap: 1, fragments: 96, shadows: false, antialias: false },
+    medium: { dprCap: 1.5, fragments: 192, shadows: false, antialias: true },
+    high: { dprCap: 2, fragments: 320, shadows: true, antialias: true },
+  } satisfies Record<
+    Quality,
+    { dprCap: number; fragments: number; shadows: boolean; antialias: boolean }
+  >,
+
+  fx: {
+    /** Fragmentos de luz por enemigo desactivado (se reduce a la mitad con "Reducir movimiento"). */
+    fragmentsPerDeath: 18,
+    fragmentLifetime: 0.9,
+    /** Luces dinámicas reutilizables para pulsos concedidos por el presupuesto. */
+    lightPool: 4,
+    /** Duración de los cambios de color "atenuados" (estables, sin pulso). */
+    dimmedSeconds: 0.35,
+  },
+} as const;

@@ -1,0 +1,91 @@
+/**
+ * Todos los textos visibles para el jugador, en español y en un solo lugar.
+ */
+export const TEXTS = {
+  start: {
+    subtitle: 'Sobrevive a las oleadas de máquinas en la arena de neón.',
+    play: 'Jugar',
+    settings: 'Ajustes',
+    controlsTitle: 'Controles',
+    controls: [
+      'WASD: moverse',
+      'Ratón o flechas: girar la cámara',
+      'Clic izquierdo o Espacio: disparar',
+      'Clic derecho: apuntar con precisión',
+      'Shift: esquivar',
+      'R: ventilar el arma',
+      'C: cambiar de hombro',
+      'Esc o P: pausa · M: silencio',
+    ],
+    noticeTitle: 'Aviso',
+    notice:
+      'Este juego tiene efectos de luz y movimiento rápido de cámara. Es un combate de fantasía contra robots, sin sangre ni imágenes explícitas. Puedes reducir los destellos y el movimiento aquí o en los ajustes.',
+  },
+  clickToPlay: 'Haz clic para jugar',
+  clickToContinue: 'Haz clic para continuar',
+  pointerLockUnavailable:
+    'No se pudo capturar el puntero. Usa las flechas para girar o haz clic en el juego para intentarlo de nuevo.',
+  pause: {
+    title: 'Pausa',
+    resume: 'Continuar',
+    settings: 'Ajustes',
+    quit: 'Volver al inicio',
+  },
+  defeat: {
+    title: 'Chispa ha sido desactivada',
+    score: 'Puntos',
+    wave: 'Oleada alcanzada',
+    retry: 'Reintentar',
+    quit: 'Volver al inicio',
+  },
+  settings: {
+    title: 'Ajustes',
+    back: 'Volver',
+    muted: 'Silenciar sonido',
+    reduceFlashes: 'Reducir destellos',
+    reduceMotion: 'Reducir movimiento',
+    sensitivity: 'Sensibilidad del ratón',
+    invertY: 'Invertir eje vertical',
+    fov: 'Campo de visión',
+    quality: 'Calidad gráfica',
+    qualityLow: 'Baja',
+    qualityMedium: 'Media',
+    qualityHigh: 'Alta',
+    on: 'Sí',
+    off: 'No',
+    saveFailed: 'No se pudieron guardar los ajustes en este navegador.',
+  },
+  hud: {
+    health: 'Vida',
+    shield: 'Escudo',
+    heat: 'Calor',
+    overheated: 'SOBRECALENTADA',
+    venting: 'VENTILANDO',
+    dodgeReady: 'Esquiva lista',
+    dodgeCooldown: 'Esquiva',
+    wave: 'Oleada',
+    score: 'Puntos',
+    lowHealth: 'VIDA BAJA',
+    mutedOn: 'Sonido: no',
+    mutedOff: 'Sonido: sí',
+    waveIncoming: 'Oleada',
+    rest: 'Siguiente oleada en',
+  },
+  errors: {
+    noWebgl:
+      'Tu navegador no puede mostrar gráficos 3D (WebGL no está disponible). Prueba con otro navegador o activa la aceleración por hardware.',
+    contextLost: 'Se perdió el contexto gráfico. Esperando a que el navegador lo restaure…',
+    contextRestored: 'Contexto gráfico restaurado. Haz clic para continuar.',
+  },
+  arenas: {
+    'hangar-cobalto': 'Hangar Cobalto',
+  },
+  debug: {
+    title: 'Depuración',
+    fps: 'FPS',
+    enemies: 'Enemigos',
+    projectiles: 'Proyectiles',
+    flashes: 'Destellos/s',
+    god: 'Invulnerable',
+  },
+} as const;
