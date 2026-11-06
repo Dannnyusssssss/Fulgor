@@ -433,13 +433,10 @@ body {
 
 .indicator.is-warn .indicator-arrow {
   background: var(--warn);
-  transform: scale(1.35);
 }
 
 .indicator-mark {
   position: absolute;
-  left: -26px;
-  top: -12px;
   font-weight: 800;
   font-size: 1.1rem;
   color: var(--warn);
@@ -480,4 +477,71 @@ body {
   .vignette {
     transition: opacity 0.3s linear;
   }
+}
+
+/* ---------- Selección de arena ---------- */
+.arena-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin: 12px 0 18px;
+}
+
+.arena-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  text-align: left;
+  padding: 14px 16px;
+  min-height: 110px;
+}
+
+.arena-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.75;
+  border-style: dashed;
+}
+
+.arena-name {
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--accent-strong);
+}
+
+.arena-desc,
+.arena-meta {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+/* ---------- Resultados ---------- */
+.result-record {
+  color: var(--warn);
+  font-weight: 700;
+}
+
+.result-unlocked {
+  color: var(--health);
+  font-weight: 600;
+}
+
+.hud-combo {
+  min-height: 1.2em;
+  color: var(--warn);
+  font-weight: 700;
+}
+
+/* ---------- Indicadores: marcas ---------- */
+.indicator.is-healer .indicator-arrow {
+  background: var(--health);
+}
+
+.indicator.is-healer .indicator-mark {
+  color: var(--health);
+}
+
+.indicator-mark {
+  left: -8px;
+  top: -12px;
 }

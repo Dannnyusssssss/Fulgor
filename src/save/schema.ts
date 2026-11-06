@@ -3,6 +3,7 @@
  * Cualquier dato ausente, de otro tipo o fuera de rango se reemplaza por el valor por defecto.
  */
 import { BALANCE, type Quality } from '../data/balance';
+import { isDifficulty, type Difficulty } from '../data/difficulty';
 import { META } from '../data/meta';
 
 export interface Settings {
@@ -20,8 +21,13 @@ export interface SaveData {
   settings: Settings;
   progress: {
     unlockedArenas: string[];
+    /** Arenas completadas, como `arena:dificultad`. */
+    completed: string[];
+    /** Última arena y dificultad elegidas (para la pantalla de selección). */
+    lastArena: string;
+    lastDifficulty: Difficulty;
   };
-  /** Mejores puntuaciones por arena. */
+  /** Mejores puntuaciones por `arena:dificultad`. */
   best: Record<string, number>;
   /** Última semilla usada (32 bits sin signo) o null. */
   lastSeed: number | null;
@@ -31,8 +37,16 @@ export interface SaveData {
 export const MAX_SAVE_LENGTH = 64 * 1024;
 const MAX_ID_LENGTH = 40;
 const MAX_ARENAS = 32;
+const MAX_ENTRIES = MAX_ARENAS * 3;
 const MAX_SCORE = 1e9;
 const ID_PATTERN = /^[a-z0-9-]+$/;
+const RESULT_KEY_PATTERN = /^[a-z0-9-]+:(easy|normal|hard)$/;
+export const FIRST_ARENA = 'hangar-cobalto';
+
+/** Clave de marcas y arenas completadas. */
+export function resultKey(arena: string, difficulty: Difficulty): string {
+  return `${arena}:${difficulty}`;
+}
 
 export function defaultSettings(prefersReducedMotion: boolean): Settings {
   return {
@@ -50,7 +64,12 @@ export function defaultSave(prefersReducedMotion: boolean): SaveData {
   return {
     version: META.saveVersion,
     settings: defaultSettings(prefersReducedMotion),
-    progress: { unlockedArenas: ['hangar-cobalto'] },
+    progress: {
+      unlockedArenas: [FIRST_ARENA],
+      completed: [],
+      lastArena: FIRST_ARENA,
+      lastDifficulty: 'normal',
+    },
     best: {},
     lastSeed: null,
   };
@@ -70,6 +89,10 @@ function num(v: unknown, min: number, max: number, fallback: number): number {
 
 function isId(v: unknown): v is string {
   return typeof v === 'string' && v.length > 0 && v.length <= MAX_ID_LENGTH && ID_PATTERN.test(v);
+}
+
+function isResultKey(v: unknown): v is string {
+  return typeof v === 'string' && v.length <= MAX_ID_LENGTH + 8 && RESULT_KEY_PATTERN.test(v);
 }
 
 export function parseSettings(raw: unknown, prefersReducedMotion: boolean): Settings {
@@ -101,25 +124,38 @@ export function parseSave(text: string | null, prefersReducedMotion: boolean): S
   if (!isRecord(raw)) return d;
 
   const unlocked: string[] = [...d.progress.unlockedArenas];
+  const completed: string[] = [];
+  let lastArena = d.progress.lastArena;
+  let lastDifficulty = d.progress.lastDifficulty;
   const progress = raw['progress'];
-  if (isRecord(progress) && Array.isArray(progress['unlockedArenas'])) {
-    for (const id of progress['unlockedArenas'].slice(0, MAX_ARENAS)) {
-      if (isId(id) && !unlocked.includes(id)) unlocked.push(id);
+  if (isRecord(progress)) {
+    if (Array.isArray(progress['unlockedArenas'])) {
+      for (const id of progress['unlockedArenas'].slice(0, MAX_ARENAS)) {
+        if (isId(id) && !unlocked.includes(id)) unlocked.push(id);
+      }
     }
+    if (Array.isArray(progress['completed'])) {
+      for (const k of progress['completed'].slice(0, MAX_ENTRIES)) {
+        if (isResultKey(k) && !completed.includes(k)) completed.push(k);
+      }
+    }
+    if (isId(progress['lastArena'])) lastArena = progress['lastArena'];
+    if (isDifficulty(progress['lastDifficulty'])) lastDifficulty = progress['lastDifficulty'];
   }
 
+  // Marcas: `arena:dificultad`. Las del Hito 1 (solo `arena`) se migran a Normal.
   const best: Record<string, number> = {};
   const rawBest = raw['best'];
   if (isRecord(rawBest)) {
     let count = 0;
     for (const [k, v] of Object.entries(rawBest)) {
-      if (count >= MAX_ARENAS) break;
-      if (!isId(k)) continue;
+      if (count >= MAX_ENTRIES) break;
+      const key = isResultKey(k) ? k : isId(k) ? resultKey(k, 'normal') : null;
+      if (key === null) continue;
       const score = num(v, 0, MAX_SCORE, -1);
-      if (score >= 0) {
-        best[k] = Math.floor(score);
-        count++;
-      }
+      if (score < 0) continue;
+      best[key] = Math.max(best[key] ?? 0, Math.floor(score));
+      count++;
     }
   }
 
@@ -132,7 +168,7 @@ export function parseSave(text: string | null, prefersReducedMotion: boolean): S
   return {
     version: META.saveVersion,
     settings: parseSettings(raw['settings'], prefersReducedMotion),
-    progress: { unlockedArenas: unlocked },
+    progress: { unlockedArenas: unlocked, completed, lastArena, lastDifficulty },
     best,
     lastSeed,
   };

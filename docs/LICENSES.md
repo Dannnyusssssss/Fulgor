@@ -31,4 +31,4 @@ El aviso de licencia MIT de Three.js (Copyright © 2010-2026 three.js authors) s
 
 ## Auditoría
 
-`npm audit` informa una vulnerabilidad de severidad moderada en `minimatch` (GHSA-g3hv-75wg-m249, denegación de servicio con patrones glob), que llega solo a través de las herramientas de desarrollo ESLint y typescript-eslint. No se incluye en `dist/` y solo procesa patrones escritos en la configuración del propio proyecto. No hay vulnerabilidades altas ni críticas.
+`npm audit` informa una única vulnerabilidad de severidad moderada en `minimatch` (que el informe cuenta 10 veces, una por cada paquete de ESLint que la arrastra) (GHSA-g3hv-75wg-m249, denegación de servicio con patrones glob), que llega solo a través de las herramientas de desarrollo ESLint y typescript-eslint. No se incluye en `dist/` y solo procesa patrones escritos en la configuración del propio proyecto. No hay vulnerabilidades altas ni críticas.

@@ -1,14 +1,17 @@
 /**
- * Efectos visuales: fragmentos de luz de las máquinas desactivadas, impactos y luces dinámicas.
+ * Efectos visuales: fragmentos de luz de las máquinas desactivadas, impactos, rayos, ondas y luces dinámicas.
  * Todo efecto de luz fuerte pide permiso a FlashBudget: si lo concede se muestra con pulso;
  * si no (o con "Reducir destellos"), se muestra como un cambio de color estable, pequeño y sin pulso.
  * El destello del disparo es un brillo suave continuo, nunca un pulso por disparo.
  */
 import {
   AdditiveBlending,
+  BoxGeometry,
   Color,
+  DoubleSide,
   DynamicDrawUsage,
   IcosahedronGeometry,
+  RingGeometry,
   InstancedMesh,
   MeshBasicMaterial,
   Object3D,
@@ -17,8 +20,9 @@ import {
   type Scene,
 } from 'three';
 import type { FlashBudget } from '../core/flash-budget';
-import { damp, forwardInto, rightInto, vec2 } from '../core/math';
+import { damp, forwardInto, rightInto, vec2, yawFromDir } from '../core/math';
 import { BALANCE, type Quality } from '../data/balance';
+import { BLINDADO } from '../data/enemies';
 import { GameEvent, type EventRecord } from '../game/events';
 import type { PlayerState } from '../game/player';
 
@@ -26,8 +30,23 @@ const IMPACT_CAPACITY = 48;
 const FRAGMENT_CAPACITY: number = BALANCE.quality.high.fragments;
 const FRAG_COLOR = new Color(0xff6fb0);
 const FRAG_COLOR_ALT = new Color(0x8ff3ff);
-const IMPACT_COLOR = new Color(0x9ff8ff);
-const BURST_COLOR = new Color(0xff8ac4);
+/** Colores de los impactos, por índice. */
+const IMPACT_COLORS = [
+  new Color(0x9ff8ff), // 0: disparo del jugador
+  new Color(0xff8ac4), // 1: desactivación
+  new Color(0x9fe8ff), // 2: escudo del Blindado
+  new Color(0x7dff9e), // 3: objeto recogido
+  new Color(0xff6fe0), // 4: disparo enemigo
+];
+const IMPACT_PLAYER = 0;
+const IMPACT_BURST = 1;
+const IMPACT_SHIELD = 2;
+const IMPACT_PICKUP = 3;
+const IMPACT_ENEMY = 4;
+const BEAM_COLOR = new Color(0xffc0b0);
+const WAVE_COLOR = new Color(0xffa31a);
+const SHAPE_CAPACITY = 12;
+const WHITE_FALLBACK = new Color(0xffffff);
 
 /** Generador visual simple (solo afecta al aspecto de las partículas, nunca a la partida). */
 class VisualRandom {
@@ -73,8 +92,21 @@ export class Effects {
   private readonly isize0 = new Float32Array(IMPACT_CAPACITY);
   private readonly isize1 = new Float32Array(IMPACT_CAPACITY);
   private readonly iint = new Float32Array(IMPACT_CAPACITY);
-  private readonly iburst = new Uint8Array(IMPACT_CAPACITY);
+  private readonly icolor = new Uint8Array(IMPACT_CAPACITY);
   private impactCursor = 0;
+
+  // Rayos del Vigía y ondas del Blindado: pocos a la vez, con duración breve.
+  private readonly beams: InstancedMesh;
+  private readonly waves: InstancedMesh;
+  private readonly sx = new Float32Array(SHAPE_CAPACITY * 2);
+  private readonly sz = new Float32Array(SHAPE_CAPACITY * 2);
+  private readonly syaw = new Float32Array(SHAPE_CAPACITY * 2);
+  private readonly slen = new Float32Array(SHAPE_CAPACITY * 2);
+  private readonly sage = new Float32Array(SHAPE_CAPACITY * 2).fill(1);
+  private readonly sdur = new Float32Array(SHAPE_CAPACITY * 2).fill(1);
+  private readonly sint = new Float32Array(SHAPE_CAPACITY * 2);
+  private beamCursor = 0;
+  private waveCursor = 0;
 
   // Luces: un grupo fijo (el número de luces no cambia nunca, así no se recompilan shaders).
   private readonly lights: PointLight[] = [];
@@ -110,8 +142,35 @@ export class Effects {
       }),
       IMPACT_CAPACITY,
     );
+    const beamGeo = new BoxGeometry(1, 1, 1);
+    beamGeo.translate(0, 0, -0.5);
+    this.beams = new InstancedMesh(
+      beamGeo,
+      new MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        depthWrite: false,
+        blending: AdditiveBlending,
+      }),
+      SHAPE_CAPACITY,
+    );
+    // Onda frontal: el mismo semicírculo que el aviso, que se expande y se apaga.
+    const arc = BLINDADO.attackHalfAngle;
+    const waveGeo = new RingGeometry(0.85, 1, 24, 1, Math.PI / 2 - arc, arc * 2);
+    waveGeo.rotateX(-Math.PI / 2);
+    this.waves = new InstancedMesh(
+      waveGeo,
+      new MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        depthWrite: false,
+        blending: AdditiveBlending,
+        side: DoubleSide,
+      }),
+      SHAPE_CAPACITY,
+    );
     const white = new Color(0xffffff);
-    for (const m of [this.fragments, this.impacts]) {
+    for (const m of [this.fragments, this.impacts, this.beams, this.waves]) {
       m.instanceMatrix.setUsage(DynamicDrawUsage);
       for (let i = 0; i < m.instanceMatrix.count; i++) m.setColorAt(i, white);
       m.count = 0;
@@ -146,18 +205,82 @@ export class Effects {
       case GameEvent.ProjectileHitWall:
       case GameEvent.ProjectileHitEnemy: {
         const full = this.budget.request(now) === 'full';
-        if (full) this.spawnImpact(e.x, 0.8, e.z, 0.18, 0.45, 0.14, 1, false);
-        else this.spawnImpact(e.x, 0.8, e.z, 0.16, 0.16, BALANCE.fx.dimmedSeconds, 0.35, false);
+        const c =
+          e.type === GameEvent.ProjectileHitWall && e.a === 1 ? IMPACT_ENEMY : IMPACT_PLAYER;
+        if (full) this.spawnImpact(e.x, 0.8, e.z, 0.18, 0.45, 0.14, 1, c);
+        else this.spawnImpact(e.x, 0.8, e.z, 0.16, 0.16, BALANCE.fx.dimmedSeconds, 0.35, c);
         break;
       }
+      case GameEvent.ProjectileBlocked: {
+        // Chispa azul en el escudo: forma y color distintos del impacto que sí hace daño.
+        const full = this.budget.request(now) === 'full';
+        if (full) this.spawnImpact(e.x, 0.8, e.z, 0.25, 0.5, 0.16, 0.9, IMPACT_SHIELD);
+        else
+          this.spawnImpact(
+            e.x,
+            0.8,
+            e.z,
+            0.22,
+            0.22,
+            BALANCE.fx.dimmedSeconds,
+            0.35,
+            IMPACT_SHIELD,
+          );
+        break;
+      }
+      case GameEvent.EnemyFire: {
+        // Destello de cañón del Centinela.
+        const full = this.budget.request(now) === 'full';
+        this.spawnImpact(
+          e.x,
+          0.75,
+          e.z,
+          0.2,
+          full ? 0.4 : 0.2,
+          full ? 0.12 : BALANCE.fx.dimmedSeconds,
+          full ? 0.8 : 0.3,
+          IMPACT_ENEMY,
+        );
+        break;
+      }
+      case GameEvent.BeamFire: {
+        const full = this.budget.request(now) === 'full';
+        this.spawnShape(
+          true,
+          e.x,
+          e.z,
+          yawFromDir(e.a, e.b),
+          e.c,
+          full ? 0.14 : BALANCE.fx.dimmedSeconds,
+          full ? 1 : 0.4,
+        );
+        break;
+      }
+      case GameEvent.Shockwave: {
+        const full = this.budget.request(now) === 'full';
+        this.spawnShape(
+          false,
+          e.x,
+          e.z,
+          yawFromDir(e.a, e.b),
+          e.c,
+          full ? 0.25 : BALANCE.fx.dimmedSeconds,
+          full ? 0.9 : 0.35,
+        );
+        break;
+      }
+      case GameEvent.PickupCollected:
+        // Brillo pequeño y suave: no cuenta como destello.
+        this.spawnImpact(e.x, 0.7, e.z, 0.3, 0.6, 0.35, 0.4, IMPACT_PICKUP);
+        break;
       case GameEvent.EnemyDestroyed: {
         this.spawnFragments(e.x, 0.85, e.z);
         const full = this.budget.request(now) === 'full';
         if (full) {
-          this.spawnImpact(e.x, 0.85, e.z, 0.4, 1.0, 0.22, 0.9, true);
+          this.spawnImpact(e.x, 0.85, e.z, 0.4, 1.0, 0.22, 0.9, IMPACT_BURST);
           this.pulseLight(e.x, 1.2, e.z);
         } else {
-          this.spawnImpact(e.x, 0.85, e.z, 0.45, 0.45, BALANCE.fx.dimmedSeconds, 0.3, true);
+          this.spawnImpact(e.x, 0.85, e.z, 0.45, 0.45, BALANCE.fx.dimmedSeconds, 0.3, IMPACT_BURST);
         }
         break;
       }
@@ -180,7 +303,7 @@ export class Effects {
     s1: number,
     dur: number,
     intensity: number,
-    burst: boolean,
+    colorIndex: number,
   ): void {
     const i = this.impactCursor;
     this.impactCursor = (this.impactCursor + 1) % IMPACT_CAPACITY;
@@ -192,7 +315,74 @@ export class Effects {
     this.isize0[i] = s0;
     this.isize1[i] = s1;
     this.iint[i] = intensity;
-    this.iburst[i] = burst ? 1 : 0;
+    this.icolor[i] = colorIndex;
+  }
+
+  /** Rayo (`beam` true) u onda frontal, con su orientación y longitud o alcance. */
+  private spawnShape(
+    beam: boolean,
+    x: number,
+    z: number,
+    yaw: number,
+    len: number,
+    dur: number,
+    intensity: number,
+  ): void {
+    const base = beam ? 0 : SHAPE_CAPACITY;
+    const k = beam ? this.beamCursor : this.waveCursor;
+    if (beam) this.beamCursor = (this.beamCursor + 1) % SHAPE_CAPACITY;
+    else this.waveCursor = (this.waveCursor + 1) % SHAPE_CAPACITY;
+    const i = base + k;
+    this.sx[i] = x;
+    this.sz[i] = z;
+    this.syaw[i] = yaw;
+    this.slen[i] = len;
+    this.sage[i] = 0;
+    this.sdur[i] = dur;
+    this.sint[i] = intensity;
+  }
+
+  private updateShapes(dt: number): void {
+    const d = this.dummy;
+    let nb = 0;
+    let nw = 0;
+    for (let i = 0; i < SHAPE_CAPACITY * 2; i++) {
+      const age = (this.sage[i] ?? 1) + dt;
+      this.sage[i] = age;
+      const dur = this.sdur[i] ?? 1;
+      if (age >= dur) continue;
+      const t = age / dur;
+      const beam = i < SHAPE_CAPACITY;
+      const len = this.slen[i] ?? 1;
+      if (beam) {
+        d.position.set(this.sx[i] ?? 0, 1.45, this.sz[i] ?? 0);
+        d.rotation.set(0, this.syaw[i] ?? 0, 0);
+        d.scale.set(0.12, 0.12, len);
+      } else {
+        // La onda se expande desde el Blindado hasta su alcance.
+        const r = len * (0.35 + 0.65 * t);
+        d.position.set(this.sx[i] ?? 0, 0.05, this.sz[i] ?? 0);
+        d.rotation.set(0, this.syaw[i] ?? 0, 0);
+        d.scale.set(r, 1, r);
+      }
+      d.updateMatrix();
+      this.color.copy(beam ? BEAM_COLOR : WAVE_COLOR).multiplyScalar((this.sint[i] ?? 0) * (1 - t));
+      if (beam) {
+        this.beams.setMatrixAt(nb, d.matrix);
+        this.beams.setColorAt(nb++, this.color);
+      } else {
+        this.waves.setMatrixAt(nw, d.matrix);
+        this.waves.setColorAt(nw++, this.color);
+      }
+    }
+    for (const [m, n] of [
+      [this.beams, nb],
+      [this.waves, nw],
+    ] as const) {
+      m.count = n;
+      m.instanceMatrix.needsUpdate = true;
+      if (m.instanceColor) m.instanceColor.needsUpdate = true;
+    }
   }
 
   private spawnFragments(x: number, y: number, z: number): void {
@@ -229,6 +419,7 @@ export class Effects {
 
   update(dt: number, player: PlayerState, px: number, pz: number, firing: boolean): void {
     const d = this.dummy;
+    this.updateShapes(dt);
     // Fragmentos: suben un poco, frenan y se encogen (se "deshacen" en luz).
     let nf = 0;
     for (let i = 0; i < FRAGMENT_CAPACITY; i++) {
@@ -274,7 +465,7 @@ export class Effects {
       d.updateMatrix();
       this.impacts.setMatrixAt(ni, d.matrix);
       this.color
-        .copy(this.iburst[i] ? BURST_COLOR : IMPACT_COLOR)
+        .copy(IMPACT_COLORS[this.icolor[i] ?? 0] ?? WHITE_FALLBACK)
         .multiplyScalar((this.iint[i] ?? 0) * (1 - t));
       this.impacts.setColorAt(ni, this.color);
       ni++;
@@ -318,10 +509,13 @@ export class Effects {
     this.muzzleLevel = 0;
     this.fragments.count = 0;
     this.impacts.count = 0;
+    this.sage.fill(1);
+    this.beams.count = 0;
+    this.waves.count = 0;
   }
 
   dispose(): void {
-    for (const m of [this.fragments, this.impacts]) {
+    for (const m of [this.fragments, this.impacts, this.beams, this.waves]) {
       this.scene.remove(m);
       m.geometry.dispose();
       (m.material as MeshBasicMaterial).dispose();

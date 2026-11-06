@@ -5,7 +5,8 @@
 import { BALANCE } from '../data/balance';
 import { TEXTS } from '../data/texts';
 import { GameEvent, type EventRecord } from '../game/events';
-import { SpawnPhase } from '../game/spawner';
+import { DirectorPhase } from '../game/director';
+import { comboMultiplier } from '../game/score';
 import type { World } from '../game/world';
 import { el, setText, setVisible } from './dom';
 
@@ -46,6 +47,7 @@ export class Hud {
   private readonly heatState = el('div', 'heat-state', '');
   private readonly wave = el('div', 'hud-wave', '');
   private readonly score = el('div', 'hud-score', '');
+  private readonly combo = el('div', 'hud-combo', '');
   private readonly banner = el('div', 'hud-banner', '');
   private readonly lowHealth = el('div', 'hud-low', TEXTS.hud.lowHealth);
   private readonly mute = el('div', 'hud-mute', '');
@@ -60,7 +62,7 @@ export class Hud {
     const topLeft = el('div', 'hud-top-left');
     topLeft.append(this.health.root, this.shield.root);
     const topRight = el('div', 'hud-top-right');
-    topRight.append(this.wave, this.score);
+    topRight.append(this.wave, this.score, this.combo);
     const bottom = el('div', 'hud-bottom');
     bottom.append(this.heatState, this.heat.root, this.dodge.root);
     this.root.append(
@@ -95,6 +97,11 @@ export class Hud {
       setText(this.banner, `${TEXTS.hud.waveIncoming} ${e.a}`);
       setVisible(this.banner, true);
       this.bannerTimer = 2.2;
+    } else if (e.type === GameEvent.WaveCleared) {
+      const bonus = e.b > 0 ? ` · ${TEXTS.hud.cleanBonus}${e.b}` : '';
+      setText(this.banner, `${TEXTS.hud.waveCleared}${bonus}`);
+      setVisible(this.banner, true);
+      this.bannerTimer = 2.4;
     } else if (e.type === GameEvent.PlayerHit) {
       // Nivel continuo: varios golpes seguidos mantienen la viñeta, no la hacen parpadear.
       this.hitLevel = Math.min(1, this.hitLevel + 0.45);
@@ -127,14 +134,16 @@ export class Hud {
       p.alive && p.health / p.maxHealth <= BALANCE.player.lowHealthFraction,
     );
 
-    const s = world.spawner;
-    setText(this.wave, `${TEXTS.hud.wave} ${Math.max(1, s.wave)}`);
+    const s = world.director;
+    setText(this.wave, `${TEXTS.hud.wave} ${Math.max(1, s.wave)}/${world.waves.length}`);
     setText(this.score, `${TEXTS.hud.score} ${world.score.points}`);
+    const combo = world.score.combo;
+    setText(this.combo, combo > 1 ? `${TEXTS.hud.combo}${comboMultiplier(combo).toFixed(1)}` : '');
 
     if (this.bannerTimer > 0) {
       this.bannerTimer -= dt;
       if (this.bannerTimer <= 0) setVisible(this.banner, false);
-    } else if (s.phase === SpawnPhase.Rest && s.wave > 0 && !world.defeated) {
+    } else if (s.phase === DirectorPhase.Rest && s.wave > 0 && !world.defeated) {
       setText(this.banner, `${TEXTS.hud.rest} ${Math.ceil(Math.max(0, s.timer))}`);
       setVisible(this.banner, true);
     } else {

@@ -116,8 +116,18 @@ export class PlayerMesh {
     this.muzzleMat.color.setRGB(0.22 + 0.78 * h, 0.88 - 0.38 * h, 1 - 0.85 * h);
   }
 
+  private shown = true;
+  private tooClose = false;
+
   setVisible(visible: boolean): void {
-    this.root.visible = visible;
+    this.shown = visible;
+    this.root.visible = this.shown && !this.tooClose;
+  }
+
+  /** Con la cámara pegada a Chispa (junto a una pared), el modelo se oculta para no tapar la vista. */
+  setCameraTooClose(tooClose: boolean): void {
+    this.tooClose = tooClose;
+    this.root.visible = this.shown && !this.tooClose;
   }
 
   dispose(): void {

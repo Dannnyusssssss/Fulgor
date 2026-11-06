@@ -4,11 +4,14 @@ Parámetros de URL solo para desarrollo. Están ocultos por defecto, se validan 
 
 | Parámetro | Valores | Efecto |
 |---|---|---|
-| `?debug` | sin valor, `1` o `true` | Muestra el overlay: FPS, enemigos vivos, proyectiles vivos, destellos permitidos en el último segundo y controles para ajustar en vivo los parámetros de combate. |
+| `?debug` | sin valor, `1` o `true` | Muestra el overlay: FPS, enemigos vivos, proyectiles vivos, destellos permitidos en el último segundo, draw calls y controles para ajustar en vivo los parámetros de combate. |
 | `?god` | sin valor, `1` o `true` | El jugador no recibe daño. |
+| `?arena=` | `hangar-cobalto`, `fundicion-ambar`, `jardin-cristal` | Arena inicial (aunque esté bloqueada). |
+| `?wave=` | `1` a `10` | Oleada inicial de cada partida. |
+| `?stress` | sin valor, `1` o `true` | Prueba de rendimiento: 60 enemigos de los 5 tipos y unos 200 proyectiles vivos; el jugador es invulnerable y el director de oleadas se desactiva. |
 
-Se pueden combinar: `?debug&god`. Cualquier otro valor se ignora, igual que una cadena de búsqueda de más de 200 caracteres.
+Se pueden combinar: `?arena=fundicion-ambar&wave=6&god&debug`. Cualquier otro valor se ignora, igual que una cadena de búsqueda de más de 200 caracteres.
+
+Las partidas con `?god`, `?wave` o `?stress` no cuentan para el progreso (ni marcas ni desbloqueos).
 
 Los cambios hechos en el overlay solo duran hasta recargar la página; los valores definitivos se pasan a mano a `src/data/`.
-
-Parámetros previstos para el Hito 2: `?arena=` y `?wave=`.

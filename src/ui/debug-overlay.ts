@@ -166,7 +166,7 @@ export class DebugOverlay {
     parent.append(this.root);
   }
 
-  update(dt: number, world: World, flashesInWindow: number): void {
+  update(dt: number, world: World, flashesInWindow: number, drawCalls: number): void {
     this.frames++;
     this.acc += dt;
     if (this.acc < 0.25) return;
@@ -178,7 +178,9 @@ export class DebugOverlay {
       `${TEXTS.debug.fps}: ${this.fps.toFixed(0)}\n` +
         `${TEXTS.debug.enemies}: ${world.enemies.activeCount}\n` +
         `${TEXTS.debug.projectiles}: ${world.projectiles.activeCount}\n` +
-        `${TEXTS.debug.flashes}: ${flashesInWindow}`,
+        `${TEXTS.debug.flashes}: ${flashesInWindow}
+` +
+        `${TEXTS.debug.drawCalls}: ${drawCalls}`,
     );
   }
 }

@@ -1,8 +1,9 @@
 /**
- * Pantallas en DOM: inicio (instrucciones y aviso), ajustes, pausa, derrota, avisos breves y errores.
+ * Pantallas en DOM: inicio (instrucciones y aviso), selección de arena, ajustes, pausa, resultados, avisos y errores.
  * Todo se maneja con teclado (botones nativos) y sin depender de hover.
  */
 import { BALANCE, type Quality } from '../data/balance';
+import { DIFFICULTY_ORDER, type Difficulty } from '../data/difficulty';
 import { META } from '../data/meta';
 import { TEXTS } from '../data/texts';
 import type { Settings } from '../save/schema';
@@ -214,25 +215,147 @@ export class PauseScreen extends Panel {
   }
 }
 
-export class DefeatScreen extends Panel {
-  private readonly score = el('p', 'result', '');
-  private readonly wave = el('p', 'result', '');
-  constructor(parent: HTMLElement, onRetry: () => void, onQuit: () => void) {
-    super(parent, 'screen-defeat');
+/** Datos que la pantalla de selección necesita del progreso guardado. */
+export interface SelectHost {
+  arenas(): readonly { id: string; unlocked: boolean; completed: boolean }[];
+  best(arena: string, difficulty: Difficulty): number;
+  selection(): { arena: string; difficulty: Difficulty };
+  select(arena: string, difficulty: Difficulty): void;
+}
+
+/** Selección de arena y dificultad, toda con botones (teclado y ratón). */
+export class SelectScreen extends Panel {
+  private readonly list = el('div', 'arena-list');
+  private readonly difficulties = el('div', 'segmented');
+  constructor(
+    parent: HTMLElement,
+    private readonly host: SelectHost,
+    private readonly onStart: () => void,
+    onBack: () => void,
+  ) {
+    super(parent, 'screen-select');
+    const card = el('div', 'panel');
+    card.append(el('h1', 'title-small', TEXTS.select.title), this.list);
+    const diffRow = el('div', 'setting-row');
+    diffRow.append(el('span', 'setting-label', TEXTS.select.difficulty), this.difficulties);
+    this.difficulties.setAttribute('role', 'group');
+    this.difficulties.setAttribute('aria-label', TEXTS.select.difficulty);
+    const actions = el('div', 'actions');
+    actions.append(
+      button(TEXTS.select.start, onStart, 'btn btn-primary'),
+      button(TEXTS.select.back, onBack),
+    );
+    card.append(diffRow, actions);
+    this.root.append(card);
+    this.root.addEventListener('keydown', (ev) => {
+      if (ev.code === 'Escape') {
+        ev.stopPropagation();
+        onBack();
+      }
+    });
+  }
+
+  override show(): void {
+    this.refresh();
+    super.show();
+  }
+
+  private refresh(): void {
+    const sel = this.host.selection();
+    const arenas = this.host.arenas();
+    const items: HTMLElement[] = [];
+    arenas.forEach((a, i) => {
+      const name = TEXTS.arenas[a.id] ?? a.id;
+      const b = el('button', 'btn arena-card');
+      b.type = 'button';
+      b.setAttribute('aria-pressed', a.id === sel.arena ? 'true' : 'false');
+      b.append(el('span', 'arena-name', name));
+      if (a.unlocked) {
+        b.append(el('span', 'arena-desc', TEXTS.arenaDescriptions[a.id] ?? ''));
+        const best = this.host.best(a.id, sel.difficulty);
+        const meta = `${TEXTS.select.best}: ${best}${a.completed ? ` · ${TEXTS.select.completed}` : ''}`;
+        b.append(el('span', 'arena-meta', meta));
+        b.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          this.host.select(a.id, this.host.selection().difficulty);
+          this.refresh();
+          this.focusArena(i);
+        });
+        // Doble clic o Enter sobre la arena ya elegida empieza la partida.
+        b.addEventListener('dblclick', () => this.onStart());
+      } else {
+        const prev = arenas[i - 1];
+        const prevName = prev ? (TEXTS.arenas[prev.id] ?? prev.id) : '';
+        b.disabled = true;
+        b.append(el('span', 'arena-desc', `${TEXTS.select.locked} ${prevName}`));
+      }
+      items.push(b);
+    });
+    this.list.replaceChildren(...items);
+
+    const diffButtons: HTMLButtonElement[] = [];
+    for (const d of DIFFICULTY_ORDER) {
+      const b = button(
+        TEXTS.difficulties[d],
+        () => {
+          this.host.select(this.host.selection().arena, d);
+          this.refresh();
+          this.difficulties.querySelectorAll('button')[DIFFICULTY_ORDER.indexOf(d)]?.focus();
+        },
+        'btn btn-seg',
+      );
+      b.setAttribute('aria-pressed', d === sel.difficulty ? 'true' : 'false');
+      diffButtons.push(b);
+    }
+    this.difficulties.replaceChildren(...diffButtons);
+  }
+
+  private focusArena(i: number): void {
+    this.list.querySelectorAll('button')[i]?.focus();
+  }
+}
+
+export interface ResultInfo {
+  victory: boolean;
+  points: number;
+  best: number;
+  newRecord: boolean;
+  wave: number;
+  bestCombo: number;
+  /** Nombre de la arena desbloqueada, o null. */
+  unlocked: string | null;
+}
+
+/** Resultados de la partida (victoria o derrota). Solo ofrece acciones internas. */
+export class ResultsScreen extends Panel {
+  private readonly title = el('h1', 'title-small', '');
+  private readonly record = el('p', 'result result-record', TEXTS.results.newRecord);
+  private readonly lines = el('div', 'results-lines');
+  private readonly unlocked = el('p', 'result result-unlocked', '');
+  constructor(parent: HTMLElement, onRetry: () => void, onChoose: () => void, onQuit: () => void) {
+    super(parent, 'screen-results');
     const card = el('div', 'panel panel-narrow');
-    card.append(el('h1', 'title-small', TEXTS.defeat.title), this.score, this.wave);
     const actions = el('div', 'actions actions-column');
     actions.append(
-      button(TEXTS.defeat.retry, onRetry, 'btn btn-primary'),
-      button(TEXTS.defeat.quit, onQuit),
+      button(TEXTS.results.retry, onRetry, 'btn btn-primary'),
+      button(TEXTS.results.chooseArena, onChoose),
+      button(TEXTS.results.quit, onQuit),
     );
-    card.append(actions);
+    card.append(this.title, this.record, this.lines, this.unlocked, actions);
     this.root.append(card);
   }
 
-  setResult(points: number, wave: number): void {
-    setText(this.score, `${TEXTS.defeat.score}: ${points}`);
-    setText(this.wave, `${TEXTS.defeat.wave}: ${Math.max(1, wave)}`);
+  setResult(r: ResultInfo): void {
+    setText(this.title, r.victory ? TEXTS.results.victoryTitle : TEXTS.defeat.title);
+    setVisible(this.record, r.newRecord);
+    this.lines.replaceChildren(
+      el('p', 'result', `${TEXTS.results.points}: ${r.points}`),
+      el('p', 'result', `${TEXTS.results.best}: ${r.best}`),
+      el('p', 'result', `${TEXTS.results.wave}: ${Math.max(1, r.wave)}`),
+      el('p', 'result', `${TEXTS.results.bestCombo}: ${r.bestCombo}`),
+    );
+    setVisible(this.unlocked, r.unlocked !== null);
+    setText(this.unlocked, r.unlocked !== null ? `${TEXTS.results.unlocked} ${r.unlocked}` : '');
   }
 }
 

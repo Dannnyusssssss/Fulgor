@@ -113,6 +113,14 @@ export function buildArenaView(scene: Scene, def: ArenaDef, shadows: boolean): A
   const coverMat = new MeshStandardMaterial({ color: p.cover, roughness: 0.6, metalness: 0.35 });
   const edgeMat = new LineBasicMaterial({ color: p.coverTrim });
   const bandMat = new MeshBasicMaterial({ color: p.coverTrim });
+  const crystalMat = new MeshStandardMaterial({
+    color: p.cover,
+    roughness: 0.25,
+    metalness: 0.1,
+    emissive: new Color(p.coverTrim),
+    emissiveIntensity: 0.25,
+    flatShading: true,
+  });
   for (const c of def.covers) {
     if (c.kind === 'box') {
       const geo = new BoxGeometry(c.width, c.height, c.depth);
@@ -123,6 +131,16 @@ export function buildArenaView(scene: Scene, def: ArenaDef, shadows: boolean): A
       group.add(box);
       const edges = new LineSegments(new EdgesGeometry(geo), edgeMat);
       edges.position.copy(box.position);
+      group.add(edges);
+    } else if (c.style === 'crystal') {
+      // Cristal: prisma hexagonal que se afina hacia arriba, con brillo propio y aristas luminosas.
+      const geo = new CylinderGeometry(c.radius * 0.35, c.radius, c.height, 6);
+      const crystal = new Mesh(geo, crystalMat);
+      crystal.position.set(c.x, c.height / 2, c.z);
+      crystal.castShadow = shadows;
+      group.add(crystal);
+      const edges = new LineSegments(new EdgesGeometry(geo), edgeMat);
+      edges.position.copy(crystal.position);
       group.add(edges);
     } else {
       const pillar = new Mesh(new CylinderGeometry(c.radius, c.radius, c.height, 10), coverMat);
@@ -143,7 +161,7 @@ export function buildArenaView(scene: Scene, def: ArenaDef, shadows: boolean): A
   // Iluminación: luz ambiental de dos tonos y una sola luz direccional (con sombras solo en calidad Alta).
   const hemi = new HemisphereLight(p.hemiSky, p.hemiGround, 0.9);
   group.add(hemi);
-  const sun = new DirectionalLight(0xc8d8ff, 1.1);
+  const sun = new DirectionalLight(p.sun, 1.1);
   sun.position.set(8, 16, 6);
   sun.castShadow = shadows;
   if (shadows) {

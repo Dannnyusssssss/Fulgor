@@ -1,14 +1,15 @@
 /**
- * Sistema de proyectiles: movimiento con colisión continua contra la arena y los enemigos,
- * daño y desactivación de enemigos (con su puntuación).
+ * Sistema de proyectiles: movimiento con colisión continua contra la arena, los enemigos y el jugador.
+ * El escudo frontal del Blindado detiene los disparos que le llegan por delante.
  */
 import { segmentCircleT } from '../../core/math';
 import { sweepObstacles } from '../collision';
+import { inFrontArc } from '../enemies/blindado';
+import { EnemyKind, isDamageable, type Enemy } from '../enemies/types';
 import { GameEvent } from '../events';
-import { isDamageable, type Enemy } from '../enemies/types';
-import { damagePlayer } from '../player';
 import { Team } from '../projectiles';
 import type { World } from '../world';
+import { damageEnemy, hurtPlayer } from './damage';
 
 /** Radio máximo de un enemigo, para la fase amplia de la consulta al hash. */
 const MAX_ENEMY_RADIUS = 1.5;
@@ -44,7 +45,7 @@ export function updateProjectileSystem(world: World, dt: number): void {
         const e = items[out[i] ?? 0];
         if (e === undefined || !isDamageable(e)) continue;
         const t = segmentCircleT(ax, az, bx, bz, e.pos.x, e.pos.z, e.radius + p.radius);
-        // Ante empate gana el índice más bajo (orden de recorrido estable).
+        // Ante empate gana el primero encontrado (orden estable del hash).
         if (t >= 0 && (bestT < 0 || t < bestT)) {
           bestT = t;
           hitEnemy = e;
@@ -71,33 +72,24 @@ export function updateProjectileSystem(world: World, dt: number): void {
     p.x = ax + (bx - ax) * bestT;
     p.z = az + (bz - az) * bestT;
     if (hitEnemy !== null) {
-      damageEnemy(world, hitEnemy, p.damage);
-      world.events.emit(GameEvent.ProjectileHitEnemy, p.x, p.z, hitEnemy.index);
-    } else if (hitPlayer) {
-      if (damagePlayer(world.player, p.damage, world.god) > 0) {
-        world.events.emit(
-          GameEvent.PlayerHit,
-          world.player.pos.x,
-          world.player.pos.z,
-          p.damage,
-          -1,
-        );
+      if (isShieldBlock(world, hitEnemy, p.x, p.z)) {
+        hitEnemy.sinceBlocked = 0;
+        world.events.emit(GameEvent.ProjectileBlocked, p.x, p.z, hitEnemy.index);
+      } else {
+        damageEnemy(world, hitEnemy, p.damage);
+        world.events.emit(GameEvent.ProjectileHitEnemy, p.x, p.z, hitEnemy.index);
       }
+    } else if (hitPlayer) {
+      if (p.damage > 0) hurtPlayer(world, p.damage, -1);
     } else {
-      world.events.emit(GameEvent.ProjectileHitWall, p.x, p.z);
+      world.events.emit(GameEvent.ProjectileHitWall, p.x, p.z, p.team);
     }
     world.projectiles.release(p);
   }
 }
 
-export function damageEnemy(world: World, e: Enemy, amount: number): void {
-  if (!isDamageable(e)) return;
-  e.health -= amount;
-  e.sinceHurt = 0;
-  if (e.health <= 0) {
-    world.score.points += world.tuning.zumbador.score;
-    world.score.kills++;
-    world.events.emit(GameEvent.EnemyDestroyed, e.pos.x, e.pos.z, e.kind, e.index);
-    world.enemies.release(e);
-  }
+/** ¿El impacto en (x, z) llega por el frente protegido de un Blindado? */
+export function isShieldBlock(world: World, e: Enemy, x: number, z: number): boolean {
+  if (e.kind !== EnemyKind.Blindado) return false;
+  return inFrontArc(e, x, z, world.tuning.blindado.shieldHalfAngle);
 }

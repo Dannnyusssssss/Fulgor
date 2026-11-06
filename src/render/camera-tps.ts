@@ -68,6 +68,11 @@ export class ThirdPersonCamera {
     );
   }
 
+  /** Distancia actual de la cámara al pivote (para ocultar a Chispa si queda demasiado cerca). */
+  get currentDistance(): number {
+    return this.distance;
+  }
+
   toggleShoulder(): void {
     this.side = -this.side;
   }

@@ -159,14 +159,25 @@ describe('SpatialHash', () => {
 
 describe('parseDebugParams', () => {
   it('lee debug y god', () => {
-    expect(parseDebugParams('?debug')).toEqual({ debug: true, god: false });
-    expect(parseDebugParams('?debug=1&god=true')).toEqual({ debug: true, god: true });
+    const off = { debug: false, god: false, stress: false, arena: null, wave: null };
+    expect(parseDebugParams('?debug')).toEqual({ ...off, debug: true });
+    expect(parseDebugParams('?debug=1&god=true')).toEqual({ ...off, debug: true, god: true });
+    expect(parseDebugParams('?arena=jardin-cristal&wave=10&stress')).toEqual({
+      ...off,
+      stress: true,
+      arena: 'jardin-cristal',
+      wave: 10,
+    });
   });
 
   it('ignora valores desconocidos, cadenas vacías y cadenas demasiado largas', () => {
-    expect(parseDebugParams('?debug=no&god=2')).toEqual({ debug: false, god: false });
-    expect(parseDebugParams('')).toEqual({ debug: false, god: false });
-    expect(parseDebugParams('?debug&x=' + 'a'.repeat(300))).toEqual({ debug: false, god: false });
-    expect(parseDebugParams('?<script>')).toEqual({ debug: false, god: false });
+    const off = { debug: false, god: false, stress: false, arena: null, wave: null };
+    expect(parseDebugParams('?debug=no&god=2')).toEqual(off);
+    expect(parseDebugParams('')).toEqual(off);
+    expect(parseDebugParams('?debug&x=' + 'a'.repeat(300))).toEqual(off);
+    expect(parseDebugParams('?<script>')).toEqual(off);
+    expect(parseDebugParams('?arena=../x&wave=11')).toEqual(off);
+    expect(parseDebugParams('?wave=0')).toEqual(off);
+    expect(parseDebugParams('?wave=3.5&arena=A')).toEqual(off);
   });
 });

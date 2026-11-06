@@ -17,11 +17,6 @@ export const BALANCE = {
     minSeconds: 0.4,
   },
 
-  /** Multiplicador de daño recibido (la dificultad Fácil/Normal/Difícil llega en el Hito 2). */
-  difficulty: {
-    damageTakenMultiplier: 1,
-  },
-
   player: {
     radius: 0.45,
     speed: 6,
@@ -51,24 +46,57 @@ export const BALANCE = {
     windowSeconds: 1,
   },
 
-  /** Aparición provisional de enemigos (el director de oleadas llega en el Hito 2). */
-  spawn: {
-    firstWaveCount: 4,
-    perWaveIncrement: 2,
-    maxAlive: 24,
+  /** Director de oleadas (presupuestos y composición en waves.ts; topes por dificultad en difficulty.ts). */
+  director: {
+    wavesPerArena: 10,
+    /** Descanso antes de la primera oleada. */
+    firstRestSeconds: 2.5,
     /** Descanso entre oleadas. */
-    restSeconds: 4,
+    restSeconds: 5,
     /** Separación entre apariciones de una misma oleada. */
-    intervalSeconds: 0.7,
+    intervalSeconds: 0.6,
     /** Distancia mínima al jugador de un punto de aparición. */
     minDistanceFromPlayer: 10,
-    /** Duración de la materialización: el enemigo no se mueve, no ataca y no recibe daño. */
-    materializeSeconds: 0.8,
+    /** Mitad del cono de visión del jugador que se evita al elegir el portal (radianes, unos 50°). */
+    viewHalfAngle: 0.87,
+    /** Desplazamiento aleatorio máximo alrededor del punto de aparición. */
+    spawnJitter: 1.2,
+    /** Portal de entrada: anillo estable; el enemigo no se mueve, no ataca y no recibe daño. */
+    materializeSeconds: 1.5,
+  },
+
+  /** Peligros de energía de las arenas. */
+  hazards: {
+    /** Ningún ciclo de peligro puede ser más corto que esto (fotosensibilidad). */
+    minCycleSeconds: 1,
+    /** Aviso mínimo antes de activarse. */
+    minWarnSeconds: 1,
+  },
+
+  /** Objetos recogibles. */
+  pickups: {
+    capacity: 8,
+    maxActive: 6,
+    lifetime: 12,
+    /** Distancia de recogida (se suma al radio del jugador). */
+    radius: 0.6,
+    /** Probabilidad base de soltar un objeto al desactivar un enemigo. */
+    dropChance: 0.14,
+    /** Pesos de cada tipo al soltar. */
+    weights: { health: 0.4, shield: 0.4, coolant: 0.2 },
+    healthAmount: 25,
+    shieldAmount: 25,
+    /** Cada tanto aparece un objeto en un punto fijo de la arena si hay pocos. */
+    periodicSeconds: 18,
+    periodicIfFewerThan: 2,
   },
 
   /** Navegación de enemigos por mapa de distancias. */
   nav: {
     cellSize: 0.5,
+    /** Los enemigos con radio mayor que este usan el mapa de distancias de cuerpos grandes. */
+    smallRadius: 0.55,
+    largeRadius: 0.9,
     /** El mapa se recalcula cada tantos pasos fijos (6 pasos = 10 veces por segundo). */
     recomputeEverySteps: 6,
   },
@@ -85,8 +113,13 @@ export const BALANCE = {
     events: 512,
   },
 
+  /** Puntuación (los puntos por enemigo están en enemies.ts). */
   score: {
-    zumbador: 100,
+    /** Cada desactivación seguida sin recibir daño suma esto al multiplicador. */
+    comboStep: 0.1,
+    comboMax: 2,
+    /** Bonificación por oleada sin recibir daño, multiplicada por el número de oleada. */
+    cleanWaveBonus: 250,
   },
 
   camera: {

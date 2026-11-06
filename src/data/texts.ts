@@ -21,6 +21,32 @@ export const TEXTS = {
     notice:
       'Este juego tiene efectos de luz y movimiento rápido de cámara. Es un combate de fantasía contra robots, sin sangre ni imágenes explícitas. Puedes reducir los destellos y el movimiento aquí o en los ajustes.',
   },
+  select: {
+    title: 'Elegir arena',
+    difficulty: 'Dificultad',
+    start: 'Empezar',
+    back: 'Volver',
+    locked: 'Bloqueada: completa',
+    best: 'Mejor marca',
+    completed: 'Completada',
+  },
+  difficulties: {
+    easy: 'Fácil',
+    normal: 'Normal',
+    hard: 'Difícil',
+  },
+  results: {
+    victoryTitle: 'Arena completada',
+    points: 'Puntos',
+    best: 'Mejor marca',
+    newRecord: '¡Nueva mejor marca!',
+    wave: 'Oleada alcanzada',
+    bestCombo: 'Mejor combo',
+    unlocked: 'Nueva arena desbloqueada:',
+    retry: 'Reintentar',
+    chooseArena: 'Elegir arena',
+    quit: 'Volver al inicio',
+  },
   clickToPlay: 'Haz clic para jugar',
   clickToContinue: 'Haz clic para continuar',
   pointerLockUnavailable:
@@ -70,6 +96,9 @@ export const TEXTS = {
     mutedOff: 'Sonido: sí',
     waveIncoming: 'Oleada',
     rest: 'Siguiente oleada en',
+    combo: 'Combo ×',
+    waveCleared: 'Oleada superada',
+    cleanBonus: 'Oleada limpia +',
   },
   errors: {
     noWebgl:
@@ -79,13 +108,21 @@ export const TEXTS = {
   },
   arenas: {
     'hangar-cobalto': 'Hangar Cobalto',
-  },
+    'fundicion-ambar': 'Fundición Ámbar',
+    'jardin-cristal': 'Jardín de Cristal',
+  } as Record<string, string>,
+  arenaDescriptions: {
+    'hangar-cobalto': 'Espacio abierto con coberturas.',
+    'fundicion-ambar': 'Campos de energía que se activan tras un aviso.',
+    'jardin-cristal': 'Pasillos estrechos y recodos entre cristales.',
+  } as Record<string, string>,
   debug: {
     title: 'Depuración',
     fps: 'FPS',
     enemies: 'Enemigos',
     projectiles: 'Proyectiles',
     flashes: 'Destellos/s',
+    drawCalls: 'Draw calls',
     god: 'Invulnerable',
   },
 } as const;

@@ -1,6 +1,6 @@
 /**
- * Controlador de la aplicación: estados (inicio, jugando, pausa, derrota), entrada del navegador,
- * captura del puntero, foco, pérdida de contexto WebGL, bucle de render y ajustes guardados.
+ * Controlador de la aplicación: estados (inicio, selección, jugando, pausa, resultados), entrada del navegador,
+ * captura del puntero, foco, pérdida de contexto WebGL, bucle de render, cambio de arena, progreso y ajustes guardados.
  */
 import type { Mesh } from 'three';
 import { FlashBudget } from '../core/flash-budget';
@@ -8,9 +8,10 @@ import { emptyCommand, InputMapper } from '../core/input';
 import { FixedTimestep } from '../core/loop';
 import { lerp } from '../core/math';
 import type { DebugParams } from '../core/url-params';
-import { HANGAR_COBALTO } from '../data/arenas';
+import { ARENAS, arenaById, type ArenaDef } from '../data/arenas';
 import { BALANCE } from '../data/balance';
 import { PREVENT_DEFAULT_CODES } from '../data/controls';
+import type { Difficulty } from '../data/difficulty';
 import { TEXTS } from '../data/texts';
 import { GameEvent } from '../game/events';
 import { createTuning, type Tuning } from '../game/tuning';
@@ -19,10 +20,13 @@ import { buildArenaView, type ArenaView } from '../render/arena-mesh';
 import { ThirdPersonCamera } from '../render/camera-tps';
 import { EnemyMeshes } from '../render/enemy-meshes';
 import { Effects } from '../render/fx';
+import { HazardsView } from '../render/hazards';
+import { PickupMeshes } from '../render/pickups';
 import { PlayerMesh } from '../render/player-mesh';
 import { ProjectileMeshes } from '../render/projectiles';
 import { Reticle } from '../render/reticle';
 import { GameRenderer } from '../render/scene';
+import { bestFor, isUnlocked, recordRun } from '../save/progress';
 import type { SaveData, Settings } from '../save/schema';
 import { writeSave, type StorageLike } from '../save/storage';
 import { DebugOverlay } from './debug-overlay';
@@ -30,19 +34,23 @@ import { Hud } from './hud';
 import { OffscreenIndicators } from './indicators';
 import {
   ClickOverlay,
-  DefeatScreen,
   ErrorScreen,
   Notice,
   PauseScreen,
+  ResultsScreen,
+  SelectScreen,
   SettingsScreen,
   StartScreen,
+  type SelectHost,
   type SettingsHost,
 } from './screens';
 
-type AppState = 'menu' | 'playing' | 'paused' | 'defeat' | 'lost-context';
+type AppState = 'menu' | 'select' | 'playing' | 'paused' | 'results' | 'lost-context';
 
-/** Segundos entre la derrota y la pantalla de resultados (deja ver cómo se deshace Chispa). */
-const DEFEAT_DELAY = 1.2;
+/** Segundos entre el final de la partida y la pantalla de resultados (deja ver el final). */
+const END_DELAY = 1.2;
+/** Por debajo de esta distancia de cámara, Chispa se oculta para no tapar la vista. */
+const CAMERA_HIDE_PLAYER_DISTANCE = 0.9;
 
 export interface AppOptions {
   canvas: HTMLCanvasElement;
@@ -63,7 +71,7 @@ export function startApp(opts: AppOptions): void {
   new App(opts, renderer).run();
 }
 
-class App implements SettingsHost {
+class App implements SettingsHost, SelectHost {
   private state: AppState = 'menu';
   private readonly save: SaveData;
   private readonly input = new InputMapper(BALANCE.camera.maxLookPerEvent);
@@ -80,19 +88,24 @@ class App implements SettingsHost {
   private readonly tuning: Tuning = createTuning();
   private world: World;
   private readonly camera: ThirdPersonCamera;
+  /** Arena para la que están construidas las mallas actuales. */
+  private builtArena: ArenaDef;
   private arenaView: ArenaView;
+  private hazardsView: HazardsView;
   private readonly playerMesh: PlayerMesh;
   private readonly enemyMeshes: EnemyMeshes;
   private readonly projectileMeshes: ProjectileMeshes;
+  private readonly pickupMeshes: PickupMeshes;
   private readonly fx: Effects;
   private readonly reticle: Reticle;
   private readonly hud: Hud;
   private readonly indicators: OffscreenIndicators;
   private readonly notice: Notice;
   private readonly start: StartScreen;
+  private readonly selectScreen: SelectScreen;
   private readonly settingsScreen: SettingsScreen;
   private readonly pause: PauseScreen;
-  private readonly defeat: DefeatScreen;
+  private readonly results: ResultsScreen;
   private readonly click: ClickOverlay;
   private readonly error: ErrorScreen;
   private readonly debug: DebugOverlay | null;
@@ -101,7 +114,7 @@ class App implements SettingsHost {
   private lastFrame = 0;
   /** Sombras con las que está construida la arena actual. */
   private arenaShadows: boolean;
-  private defeatTimer = 0;
+  private endTimer = 0;
   private pointerLocked = false;
   /** Se pidió la captura del puntero y aún no hay respuesta. */
   private lockPending = false;
@@ -111,16 +124,20 @@ class App implements SettingsHost {
     private readonly renderer: GameRenderer,
   ) {
     this.save = opts.save;
+    this.applyDebugSelection();
     const s = this.save.settings;
-    this.world = this.createWorld(this.save.lastSeed ?? 1);
+    this.builtArena = this.selectedArena();
+    this.world = this.createWorld(this.save.lastSeed ?? 1, this.builtArena);
     const shadows = BALANCE.quality[s.quality].shadows;
     const scene = renderer.scene;
     this.camera = new ThirdPersonCamera(renderer.camera);
-    this.arenaView = buildArenaView(scene, HANGAR_COBALTO, shadows);
+    this.arenaView = buildArenaView(scene, this.builtArena, shadows);
+    this.hazardsView = new HazardsView(scene, this.builtArena, this.budget);
     this.arenaShadows = shadows;
     this.playerMesh = new PlayerMesh(scene, true);
     this.enemyMeshes = new EnemyMeshes(scene, BALANCE.pools.enemies, true);
     this.projectileMeshes = new ProjectileMeshes(scene, BALANCE.pools.projectiles);
+    this.pickupMeshes = new PickupMeshes(scene);
     this.fx = new Effects(scene, this.budget);
     this.reticle = new Reticle(scene);
 
@@ -131,8 +148,14 @@ class App implements SettingsHost {
     this.start = new StartScreen(
       ui,
       this,
-      () => this.startRun(),
+      () => this.showSelect(),
       () => this.openSettings('menu'),
+    );
+    this.selectScreen = new SelectScreen(
+      ui,
+      this,
+      () => this.startRun(),
+      () => this.showMenu(),
     );
     this.settingsScreen = new SettingsScreen(ui, this, () => this.closeSettings());
     this.pause = new PauseScreen(
@@ -142,16 +165,17 @@ class App implements SettingsHost {
       () => this.openSettings('paused'),
       () => this.toMenu(),
     );
-    this.defeat = new DefeatScreen(
+    this.results = new ResultsScreen(
       ui,
       () => this.startRun(),
+      () => this.showSelect(),
       () => this.toMenu(),
     );
     this.click = new ClickOverlay(ui, () => this.resume());
     this.error = new ErrorScreen(ui);
     this.debug = opts.debug.debug ? new DebugOverlay(ui, this.tuning, () => this.world) : null;
 
-    this.camera.reset(HANGAR_COBALTO.playerSpawn.yaw);
+    this.camera.reset(this.builtArena.playerSpawn.yaw);
     this.applySettings();
     this.bindEvents();
     this.showMenu();
@@ -166,6 +190,10 @@ class App implements SettingsHost {
   update(patch: Partial<Settings>): void {
     Object.assign(this.save.settings, patch);
     this.applySettings();
+    this.persist();
+  }
+
+  private persist(): void {
     if (!writeSave(this.opts.storage, this.save)) this.notice.show(TEXTS.settings.saveFailed, 4);
   }
 
@@ -176,10 +204,9 @@ class App implements SettingsHost {
     this.renderer.setFov(s.fov);
     const shadows = BALANCE.quality[s.quality].shadows;
     if (shadows !== this.arenaShadows) {
-      // Las sombras cambian los shaders: se reconstruye la arena (liberando la anterior) y se recompilan los materiales.
-      this.arenaView.dispose();
-      this.arenaView = buildArenaView(this.renderer.scene, HANGAR_COBALTO, shadows);
+      // Las sombras cambian los shaders: se reconstruye la arena y se recompilan los materiales.
       this.arenaShadows = shadows;
+      this.rebuildArena(this.builtArena);
       this.renderer.scene.traverse((obj) => {
         const m = (obj as Partial<Mesh>).material;
         if (Array.isArray(m)) m.forEach((x) => (x.needsUpdate = true));
@@ -191,22 +218,81 @@ class App implements SettingsHost {
     this.hud.setReduceFlashes(s.reduceFlashes);
   }
 
+  // ---------- Selección y progreso ----------
+
+  /** ?arena= elige la arena inicial (si existe), aunque esté bloqueada: es solo para depuración. */
+  private applyDebugSelection(): void {
+    const id = this.opts.debug.arena;
+    if (id !== null && arenaById(id) !== undefined) this.save.progress.lastArena = id;
+  }
+
+  private selectedArena(): ArenaDef {
+    const def = arenaById(this.save.progress.lastArena);
+    const allowed =
+      def !== undefined && (isUnlocked(this.save, def.id) || this.opts.debug.arena === def.id);
+    return allowed && def ? def : (ARENAS[0] as ArenaDef);
+  }
+
+  arenas(): readonly { id: string; unlocked: boolean; completed: boolean }[] {
+    return ARENAS.map((a) => ({
+      id: a.id,
+      unlocked: isUnlocked(this.save, a.id) || this.opts.debug.arena === a.id,
+      completed: this.save.progress.completed.some((k) => k.startsWith(`${a.id}:`)),
+    }));
+  }
+
+  best(arena: string, difficulty: Difficulty): number {
+    return bestFor(this.save, arena, difficulty);
+  }
+
+  selection(): { arena: string; difficulty: Difficulty } {
+    return { arena: this.selectedArena().id, difficulty: this.save.progress.lastDifficulty };
+  }
+
+  select(arena: string, difficulty: Difficulty): void {
+    this.save.progress.lastArena = arena;
+    this.save.progress.lastDifficulty = difficulty;
+    this.persist();
+    // La arena elegida se ve detrás del menú.
+    const def = this.selectedArena();
+    if (def.id !== this.builtArena.id) {
+      this.rebuildArena(def);
+      this.world = this.createWorld(this.save.lastSeed ?? 1, def);
+      this.camera.reset(def.playerSpawn.yaw);
+    }
+  }
+
   // ---------- Estados ----------
 
-  private createWorld(seed: number): World {
+  private createWorld(seed: number, arena: ArenaDef): World {
+    const d = this.opts.debug;
     return createWorld({
       seed,
-      arena: HANGAR_COBALTO,
-      god: this.opts.debug.god,
+      arena,
+      difficulty: this.save.progress.lastDifficulty,
+      god: d.god,
       tuning: this.tuning,
+      startWave: d.wave ?? 1,
+      stress: d.stress,
     });
+  }
+
+  /** Cambia las mallas de la arena (liberando las anteriores). */
+  private rebuildArena(def: ArenaDef): void {
+    this.arenaView.dispose();
+    this.hazardsView.dispose();
+    const shadows = BALANCE.quality[this.save.settings.quality].shadows;
+    this.arenaView = buildArenaView(this.renderer.scene, def, shadows);
+    this.hazardsView = new HazardsView(this.renderer.scene, def, this.budget);
+    this.builtArena = def;
   }
 
   private hideScreens(): void {
     this.start.hide();
+    this.selectScreen.hide();
     this.settingsScreen.hide();
     this.pause.hide();
-    this.defeat.hide();
+    this.results.hide();
     this.click.hide();
   }
 
@@ -218,17 +304,28 @@ class App implements SettingsHost {
     this.start.show();
   }
 
+  private showSelect(): void {
+    this.exitLock();
+    this.state = 'select';
+    this.hideScreens();
+    this.hud.setVisible(false);
+    this.reticle.setVisible(false);
+    this.selectScreen.show();
+  }
+
   private startRun(): void {
     const seed = this.opts.newSeed() >>> 0;
     this.save.lastSeed = seed;
-    writeSave(this.opts.storage, this.save);
-    this.world = this.createWorld(seed);
+    this.persist();
+    const def = this.selectedArena();
+    if (def.id !== this.builtArena.id) this.rebuildArena(def);
+    this.world = this.createWorld(seed, def);
     this.fx.clear();
     this.hud.reset();
-    this.camera.reset(HANGAR_COBALTO.playerSpawn.yaw);
+    this.camera.reset(def.playerSpawn.yaw);
     this.input.releaseAll();
     this.timestep.reset();
-    this.defeatTimer = 0;
+    this.endTimer = 0;
     this.playerMesh.setVisible(true);
     this.enterPlaying();
   }
@@ -253,7 +350,6 @@ class App implements SettingsHost {
   }
 
   private resume(): void {
-    if (this.state === 'lost-context') return;
     if (this.state !== 'paused') return;
     this.enterPlaying();
   }
@@ -276,20 +372,38 @@ class App implements SettingsHost {
     this.showMenu();
   }
 
-  private showDefeat(): void {
-    this.state = 'defeat';
+  private showResults(): void {
+    const w = this.world;
+    this.state = 'results';
     this.exitLock();
     this.input.releaseAll();
     this.hideScreens();
     this.hud.setVisible(false);
     this.reticle.setVisible(false);
-    this.defeat.setResult(this.world.score.points, this.world.spawner.wave);
-    const best = this.save.best[HANGAR_COBALTO.id] ?? 0;
-    if (this.world.score.points > best) {
-      this.save.best[HANGAR_COBALTO.id] = this.world.score.points;
-      writeSave(this.opts.storage, this.save);
+    // Las partidas de depuración (?stress, ?god u oleada inicial) no cuentan para el progreso.
+    const d = this.opts.debug;
+    const counts = !d.stress && !d.god && d.wave === null;
+    const arena = w.arena.def.id;
+    let best = bestFor(this.save, arena, w.difficulty);
+    let newRecord = false;
+    let unlocked: string | null = null;
+    if (counts) {
+      const r = recordRun(this.save, arena, w.difficulty, w.score.points, w.victory);
+      best = r.best;
+      newRecord = r.newRecord;
+      unlocked = r.unlocked;
+      this.persist();
     }
-    this.defeat.show();
+    this.results.setResult({
+      victory: w.victory,
+      points: w.score.points,
+      best,
+      newRecord,
+      wave: w.director.wave,
+      bestCombo: w.score.bestCombo,
+      unlocked: unlocked !== null ? (TEXTS.arenas[unlocked] ?? unlocked) : null,
+    });
+    this.results.show();
   }
 
   private toggleMute(): void {
@@ -309,9 +423,7 @@ class App implements SettingsHost {
     this.lockPending = true;
     try {
       const result = canvas.requestPointerLock() as unknown;
-      if (result instanceof Promise) {
-        result.catch(() => this.onLockError());
-      }
+      if (result instanceof Promise) result.catch(() => this.onLockError());
     } catch {
       this.onLockError();
     }
@@ -352,8 +464,9 @@ class App implements SettingsHost {
       // Fuera del juego solo se atienden M (silencio) y P (continuar); el resto lo maneja la interfaz.
       if (ev.repeat) return;
       if (ev.code === 'KeyM') this.toggleMute();
-      else if (ev.code === 'KeyP' && this.state === 'paused' && !this.settingsScreen.visible)
+      else if (ev.code === 'KeyP' && this.state === 'paused' && !this.settingsScreen.visible) {
         this.resume();
+      }
     });
     window.addEventListener('keyup', (ev) => {
       this.input.release(ev.code);
@@ -369,8 +482,9 @@ class App implements SettingsHost {
       this.input.release(`Mouse${ev.button}`);
     });
     document.addEventListener('mousemove', (ev) => {
-      if (this.state === 'playing' && this.pointerLocked)
+      if (this.state === 'playing' && this.pointerLocked) {
         this.input.addLook(ev.movementX, ev.movementY);
+      }
     });
     // El menú contextual se bloquea solo dentro del canvas y mientras se juega (por el clic derecho de apuntar).
     canvas.addEventListener('contextmenu', (ev) => {
@@ -446,9 +560,9 @@ class App implements SettingsHost {
           stepWorld(world, this.cmd);
         }
         alpha = this.timestep.alpha;
-        if (world.defeated) {
-          this.defeatTimer += dt;
-          if (this.defeatTimer >= DEFEAT_DELAY) this.showDefeat();
+        if (world.defeated || world.victory) {
+          this.endTimer += dt;
+          if (this.endTimer >= END_DELAY) this.showResults();
         }
       }
     }
@@ -457,6 +571,7 @@ class App implements SettingsHost {
       this.fx.handle(e, now);
       this.hud.onEvent(e);
       if (e.type === GameEvent.PlayerDefeated) this.playerMesh.setVisible(false);
+      else if (e.type === GameEvent.HazardActivate) this.hazardsView.onActivate(e.a, now);
     });
 
     const p = world.player;
@@ -466,9 +581,12 @@ class App implements SettingsHost {
     const speed = Math.hypot(p.vel.x, p.vel.z);
     const heatFrac = world.weapon.heat / world.tuning.weapon.maxHeat;
     this.playerMesh.update(px, pz, this.camera.yaw, speed, p.dodgeTimer > 0, heatFrac, dt);
+    this.playerMesh.setCameraTooClose(this.camera.currentDistance < CAMERA_HIDE_PLAYER_DISTANCE);
     this.reticle.update(world.arena, px, pz, this.camera.yaw, world.tuning.weapon.projectileRadius);
     this.enemyMeshes.update(world, alpha, dt);
     this.projectileMeshes.update(world, alpha);
+    this.pickupMeshes.update(world, dt);
+    this.hazardsView.update(world.time, dt);
     const firing = this.state === 'playing' && this.cmd.fire;
     this.fx.update(dt, p, px, pz, firing);
 
@@ -482,6 +600,11 @@ class App implements SettingsHost {
       this.indicators.update(world, this.renderer.camera, 0, 0, false);
     }
     this.notice.update(dt);
-    this.debug?.update(dt, world, this.budget.grantedInWindow(now));
+    this.debug?.update(
+      dt,
+      world,
+      this.budget.grantedInWindow(now),
+      this.renderer.renderer.info.render.calls,
+    );
   }
 }

@@ -16,6 +16,23 @@ export const GameEvent = {
   WaveStart: 10,
   EnemySpawn: 11,
   PlayerDefeated: 12,
+  /** El escudo frontal de un Blindado detuvo un disparo. */
+  ProjectileBlocked: 13,
+  /** Un Centinela disparó (a = índice del enemigo). */
+  EnemyFire: 14,
+  /** Onda del Blindado (a, b = dirección; c = alcance; d = mitad del ángulo). */
+  Shockwave: 15,
+  /** Disparo del Vigía (a, b = dirección; c = longitud del rayo). */
+  BeamFire: 16,
+  /** Un peligro de la arena se activa (a = índice del peligro). */
+  HazardActivate: 17,
+  PickupSpawn: 18,
+  /** Objeto recogido (a = tipo). */
+  PickupCollected: 19,
+  /** Oleada superada (a = número, b = bonificación por oleada limpia). */
+  WaveCleared: 20,
+  /** Arena completada. */
+  Victory: 21,
 } as const;
 
 export type GameEventType = (typeof GameEvent)[keyof typeof GameEvent];
@@ -27,6 +44,8 @@ export interface EventRecord {
   /** Datos extra según el tipo (daño, número de oleada, índice de enemigo…). */
   a: number;
   b: number;
+  c: number;
+  d: number;
 }
 
 export class EventQueue {
@@ -38,11 +57,11 @@ export class EventQueue {
   constructor(readonly capacity: number) {
     this.records = [];
     for (let i = 0; i < capacity; i++) {
-      this.records.push({ type: GameEvent.Shot, x: 0, z: 0, a: 0, b: 0 });
+      this.records.push({ type: GameEvent.Shot, x: 0, z: 0, a: 0, b: 0, c: 0, d: 0 });
     }
   }
 
-  emit(type: GameEventType, x: number, z: number, a = 0, b = 0): void {
+  emit(type: GameEventType, x: number, z: number, a = 0, b = 0, c = 0, d = 0): void {
     if (this.count >= this.capacity) {
       this.dropped++;
       return;
@@ -54,6 +73,8 @@ export class EventQueue {
     r.z = z;
     r.a = a;
     r.b = b;
+    r.c = c;
+    r.d = d;
   }
 
   get length(): number {
