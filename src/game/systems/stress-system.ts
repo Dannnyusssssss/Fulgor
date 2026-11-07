@@ -3,7 +3,7 @@
  * El director se desactiva y el jugador es invulnerable.
  */
 import { isCircleFree } from '../collision';
-import { ENEMY_KIND_IDS, EnemyState, setState } from '../enemies/types';
+import { EnemyState, REGULAR_KIND_IDS, setState } from '../enemies/types';
 import { Team } from '../projectiles';
 import type { World } from '../world';
 import { spawnEnemy } from './spawn';
@@ -20,7 +20,7 @@ export function setupStress(world: World): void {
     const x = inner.minX + 1 + rng.next() * (inner.maxX - inner.minX - 2);
     const z = inner.minZ + 1 + rng.next() * (inner.maxZ - inner.minZ - 2);
     if (!isCircleFree(world.arena, x, z, 1)) continue;
-    const kind = ENEMY_KIND_IDS[placed % ENEMY_KIND_IDS.length] ?? 1;
+    const kind = REGULAR_KIND_IDS[placed % REGULAR_KIND_IDS.length] ?? 1;
     if (spawnEnemy(world, kind, x, z, 0)) placed++;
   }
   // Sin espera de portal: la prueba empieza de inmediato.

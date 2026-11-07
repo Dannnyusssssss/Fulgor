@@ -1,7 +1,7 @@
 /**
  * Oleadas por arena: presupuesto de puntos y composición (pesos, mínimos obligatorios y máximos por tipo).
  * El director gasta el presupuesto (multiplicado por la dificultad) eligiendo enemigos con el flujo de oleadas del RNG.
- * La oleada 10 es la más fuerte de cada arena (el jefe llega en el Hito 3).
+ * La oleada 10 de cada arena es la del jefe: el Coloso (obligatorio) con una escolta pequeña.
  */
 import type { EnemyKindName } from './enemies';
 
@@ -15,6 +15,8 @@ export interface WaveDef {
   required?: KindCounts;
   /** Máximo de cada tipo en la oleada. */
   max?: KindCounts;
+  /** Oleada del jefe (el Coloso aparece primero, en su punto de la arena). */
+  boss?: boolean;
 }
 
 const ALL: KindCounts = {
@@ -55,10 +57,11 @@ const HANGAR: readonly WaveDef[] = [
   { budget: 20, weights: ALL, max: { reparador: 1, blindado: 2, vigia: 3 } },
   { budget: 23, weights: ALL, max: { reparador: 2, blindado: 2, vigia: 3 } },
   {
-    budget: 27,
-    weights: ALL,
-    required: { blindado: 2, reparador: 1 },
-    max: { reparador: 2, blindado: 3, vigia: 3 },
+    budget: 6,
+    weights: { zumbador: 1, centinela: 0.6 },
+    required: { coloso: 1 },
+    max: { centinela: 2 },
+    boss: true,
   },
 ];
 
@@ -98,10 +101,11 @@ const FUNDICION: readonly WaveDef[] = [
     max: { reparador: 2, blindado: 3, vigia: 4 },
   },
   {
-    budget: 30,
-    weights: ALL,
-    required: { blindado: 2, reparador: 2 },
-    max: { reparador: 2, blindado: 3, vigia: 4 },
+    budget: 7,
+    weights: { zumbador: 1, centinela: 0.6, vigia: 0.3 },
+    required: { coloso: 1 },
+    max: { centinela: 2, vigia: 1 },
+    boss: true,
   },
 ];
 
@@ -141,10 +145,11 @@ const JARDIN: readonly WaveDef[] = [
     max: { reparador: 2, blindado: 3, vigia: 4 },
   },
   {
-    budget: 32,
-    weights: ALL,
-    required: { blindado: 3, reparador: 2 },
-    max: { reparador: 3, blindado: 4, vigia: 4 },
+    budget: 8,
+    weights: { zumbador: 1, centinela: 0.6, blindado: 0.3 },
+    required: { coloso: 1 },
+    max: { centinela: 2, blindado: 1 },
+    boss: true,
   },
 ];
 

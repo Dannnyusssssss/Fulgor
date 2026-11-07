@@ -31,7 +31,8 @@ export function pickHealTarget(e: Enemy, ctx: EnemyContext): number {
 
 export function updateReparador(e: Enemy, ctx: EnemyContext, dt: number): number {
   const def = ctx.tuning.reparador;
-  const p = ctx.player;
+  // Objetivo actual: el jugador o, si está activo, el señuelo.
+  const p = ctx.target;
   beginStep(e, dt);
 
   if (e.state === EnemyState.Materializing) {

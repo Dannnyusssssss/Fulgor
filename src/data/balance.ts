@@ -65,6 +65,14 @@ export const BALANCE = {
     materializeSeconds: 1.5,
   },
 
+  /** Jefe: sus avisos duran al menos esto (más que el mínimo general) y sus zonas de peligro tienen un tope. */
+  boss: {
+    minWarnSeconds: 1,
+    zoneCapacity: 16,
+    /** Espera entre avisos visuales de daño continuo de sus zonas. */
+    zoneHitEverySeconds: 0.5,
+  },
+
   /** Peligros de energía de las arenas. */
   hazards: {
     /** Ningún ciclo de peligro puede ser más corto que esto (fotosensibilidad). */

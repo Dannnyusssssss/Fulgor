@@ -17,10 +17,27 @@ export interface PlayerCommand {
   /** Pulsaciones (solo verdaderas en el primer paso tras pulsar). */
   dodge: boolean;
   vent: boolean;
+  /** Habilidad (Q), pulsación. */
+  ability: boolean;
+  /** Cambio de arma: 0 = sin cambio; 1, 2 o 3 = ranura elegida (pulsación). */
+  weapon: number;
+  /** Mejora elegida en la pantalla de mejoras: 0 = ninguna; 1, 2 o 3 = opción. */
+  perk: number;
 }
 
 export function emptyCommand(): PlayerCommand {
-  return { moveX: 0, moveZ: 0, yaw: 0, fire: false, aim: false, dodge: false, vent: false };
+  return {
+    moveX: 0,
+    moveZ: 0,
+    yaw: 0,
+    fire: false,
+    aim: false,
+    dodge: false,
+    vent: false,
+    ability: false,
+    weapon: 0,
+    perk: 0,
+  };
 }
 
 export class InputMapper {
@@ -114,6 +131,14 @@ export class InputMapper {
     out.aim = this.isHeld('aim');
     out.dodge = this.consumePressed('dodge');
     out.vent = this.consumePressed('vent');
+    out.ability = this.consumePressed('ability');
+    // Si se pulsan varias ranuras en el mismo paso, gana la última de la lista.
+    let weapon = 0;
+    if (this.consumePressed('weapon1')) weapon = 1;
+    if (this.consumePressed('weapon2')) weapon = 2;
+    if (this.consumePressed('weapon3')) weapon = 3;
+    out.weapon = weapon;
+    out.perk = 0;
     return out;
   }
 }

@@ -33,6 +33,29 @@ export const GameEvent = {
   WaveCleared: 20,
   /** Arena completada. */
   Victory: 21,
+  /** Cambio de arma (a = ranura 0, 1 o 2). */
+  WeaponSwitch: 22,
+  /** Pulso del Rayo (a, b = dirección; c = longitud; d = 0 nada, 1 enemigo, 2 escudo, 3 pared). */
+  BeamPulse: 23,
+  /** Onda del jugador (a = radio). */
+  AbilityOnda: 24,
+  /** Barrera activada (a = absorción). */
+  BarrierUp: 25,
+  /** Barrera terminada (a = 1 si se rompió por daño). */
+  BarrierEnd: 26,
+  /** Señuelo colocado (en x, z; a = duración). */
+  DecoyStart: 27,
+  DecoyEnd: 28,
+  /** Oferta de mejoras lista (a = número de opciones): la simulación espera la elección. */
+  PerkOffer: 29,
+  /** Mejora elegida (a = índice en PERKS). */
+  PerkChosen: 30,
+  /** El Coloso cambia de fase (a = fase nueva). */
+  BossPhase: 31,
+  /** Cae un orbe del Coloso (a = radio). */
+  ZoneImpact: 32,
+  /** Un orbe del Coloso empieza su aviso (a = radio, b = segundos de aviso). */
+  ZoneWarn: 33,
 } as const;
 
 export type GameEventType = (typeof GameEvent)[keyof typeof GameEvent];

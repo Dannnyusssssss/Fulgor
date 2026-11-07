@@ -5,7 +5,7 @@
 import type { Rng } from '../core/rng';
 import type { EnemyKindName } from '../data/enemies';
 import type { KindCounts, WaveDef } from '../data/waves';
-import { ENEMY_KIND_IDS, kindDef, kindName, type EnemyKindId } from './enemies/types';
+import { ENEMY_KIND_IDS, EnemyKind, kindDef, kindName, type EnemyKindId } from './enemies/types';
 import type { Tuning } from './tuning';
 
 export const DirectorPhase = {
@@ -14,6 +14,8 @@ export const DirectorPhase = {
   Fighting: 2,
   /** Todas las oleadas superadas. */
   Victory: 3,
+  /** Entre oleadas: la simulación espera a que se elija una mejora. */
+  PerkChoice: 4,
 } as const;
 export type DirectorPhaseId = (typeof DirectorPhase)[keyof typeof DirectorPhase];
 
@@ -110,6 +112,15 @@ export function composeWave(
     const tmp = out[i] ?? 0;
     out[i] = out[j] ?? 0;
     out[j] = tmp;
+  }
+  // 4) En la oleada del jefe, el Coloso aparece el primero.
+  if (def.boss === true) {
+    let k = -1;
+    for (let i = 0; i < n && k < 0; i++) if (out[i] === EnemyKind.Coloso) k = i;
+    if (k > 0) {
+      out[k] = out[0] ?? 0;
+      out[0] = EnemyKind.Coloso;
+    }
   }
   return n;
 }

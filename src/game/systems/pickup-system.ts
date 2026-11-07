@@ -22,7 +22,7 @@ export function spawnPickup(world: World, type: PickupTypeId, x: number, z: numb
 export function updatePickupSystem(world: World, dt: number): void {
   const cfg = BALANCE.pickups;
   const pl = world.player;
-  const reach = cfg.radius + pl.radius;
+  const reach = cfg.radius + world.mods.pickupRadiusAdd + pl.radius;
   for (const p of world.pickups.items) {
     if (!p.active) continue;
     p.life -= dt;
@@ -32,13 +32,16 @@ export function updatePickupSystem(world: World, dt: number): void {
     }
     if (!pl.alive || distSq(p.x, p.z, pl.pos.x, pl.pos.z) > reach * reach) continue;
     if (p.type === PickupType.Health) {
-      pl.health = Math.min(pl.maxHealth, pl.health + cfg.healthAmount);
+      pl.health = Math.min(pl.maxHealth, pl.health + cfg.healthAmount * world.mods.pickupAmountMul);
     } else if (p.type === PickupType.Shield) {
-      pl.shield = Math.min(pl.maxShield, pl.shield + cfg.shieldAmount);
+      pl.shield = Math.min(pl.maxShield, pl.shield + cfg.shieldAmount * world.mods.pickupAmountMul);
     } else {
-      world.weapon.heat = 0;
-      world.weapon.overheated = false;
-      world.weapon.lockTimer = 0;
+      // El enfriador vale para todas las armas.
+      for (const w of world.weapons) {
+        w.heat = 0;
+        w.overheated = false;
+        w.lockTimer = 0;
+      }
     }
     world.events.emit(GameEvent.PickupCollected, p.x, p.z, p.type);
     world.pickups.release(p);

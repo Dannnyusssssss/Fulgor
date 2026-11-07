@@ -3,7 +3,8 @@
  * - La rotación responde al ratón en cada frame de render (sin retraso).
  * - La distancia y el cambio de hombro se suavizan de forma independiente de los FPS.
  * - Si un obstáculo queda en medio, la cámara se acerca de inmediato (nunca atraviesa paredes) y vuelve a alejarse suave.
- * - Nunca se mueve ni gira sola.
+ * - Nunca se mueve ni gira sola. La única excepción es una sacudida leve de posición (sin giro) al recibir golpes
+ *   fuertes, que se apaga con "Reducir movimiento".
  */
 import type { PerspectiveCamera } from 'three';
 import { clamp, damp, wrapAngle } from '../core/math';
@@ -12,6 +13,9 @@ import type { Arena } from '../game/arena';
 import { cameraHeight, computeBoom, type BoomInput, type BoomResult } from '../game/camera-boom';
 
 const CAM = BALANCE.camera;
+/** Desplazamiento máximo de la sacudida (m) y velocidad a la que se apaga (por segundo). */
+const SHAKE_METERS = 0.07;
+const SHAKE_DECAY = 2.5;
 
 export class ThirdPersonCamera {
   yaw = 0;
@@ -33,12 +37,34 @@ export class ThirdPersonCamera {
     minDistance: CAM.minDistance,
   };
   private readonly boomOut: BoomResult = { pivotX: 0, pivotZ: 0, distance: 0 };
+  /** Nivel de sacudida (0–1), baja solo. */
+  private shake = 0;
+  private shakeTime = 0;
+  private reduceMotion = false;
 
   constructor(private readonly camera: PerspectiveCamera) {
     camera.rotation.order = 'YXZ';
   }
 
+  /** Con "Reducir movimiento" no hay sacudida. */
+  setReduceMotion(reduce: boolean): void {
+    this.reduceMotion = reduce;
+    if (reduce) this.shake = 0;
+  }
+
+  /** Suma una sacudida leve (0–1). */
+  addShake(amount: number): void {
+    if (this.reduceMotion) return;
+    this.shake = Math.min(1, this.shake + Math.max(0, amount));
+  }
+
+  /** Gira la cámara un poco (apuntado asistido; el llamador limita la velocidad). */
+  addYaw(delta: number): void {
+    if (Number.isFinite(delta)) this.yaw = wrapAngle(this.yaw + delta);
+  }
+
   reset(yaw: number): void {
+    this.shake = 0;
     this.yaw = yaw;
     this.pitch = CAM.pitchDefault;
     this.side = 1;
@@ -107,7 +133,16 @@ export class ThirdPersonCamera {
     const camX = res.pivotX + Math.sin(this.yaw) * cosP * this.distance;
     const camZ = res.pivotZ + Math.cos(this.yaw) * cosP * this.distance;
     const camY = Math.max(0.3, cameraHeight(CAM.pivotHeight, this.pitch, this.distance));
-    this.camera.position.set(camX, camY, camZ);
+    // Sacudida: pequeño desplazamiento de posición que se apaga en menos de medio segundo.
+    this.shakeTime += dt;
+    this.shake = Math.max(0, this.shake - dt * SHAKE_DECAY);
+    const s = this.shake * this.shake * SHAKE_METERS;
+    const t = this.shakeTime;
+    this.camera.position.set(
+      camX + Math.sin(t * 37) * s,
+      camY + Math.sin(t * 29 + 1) * s,
+      camZ + Math.sin(t * 41 + 2) * s,
+    );
     this.camera.rotation.set(this.pitch, this.yaw, 0);
   }
 }

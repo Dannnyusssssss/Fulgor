@@ -11,6 +11,13 @@ import type { PlayerState } from '../player';
 import type { Tuning } from '../tuning';
 import type { Enemy } from './types';
 
+/** A quién persiguen y apuntan los enemigos: el jugador o, mientras dura, el señuelo. */
+export interface AiTarget {
+  pos: Vec2;
+  radius: number;
+  alive: boolean;
+}
+
 /** Lo que la IA necesita del mundo (así se puede probar sin crear un mundo completo). */
 export interface EnemyContext {
   arena: Arena;
@@ -18,6 +25,8 @@ export interface EnemyContext {
   navSmall: NavField;
   navLarge: NavField;
   player: PlayerState;
+  /** Objetivo de persecución y puntería (el jugador salvo que haya un señuelo activo). */
+  target: AiTarget;
   combat: Rng;
   tuning: Tuning;
   /** Todos los enemigos (para el Reparador). */
@@ -35,6 +44,16 @@ export const EnemyFlag = {
   Shockwave: 8,
   /** Rayo instantáneo en `dir`. */
   Beam: 16,
+  /** Coloso: el haz del barrido avanzó en este paso. */
+  Sweep: 32,
+  /** Coloso: ráfaga en abanico alrededor de `dir`. */
+  Volley: 64,
+  /** Coloso: crear los orbes (zonas con aviso). */
+  Orbs: 128,
+  /** Coloso: llamar enemigos de apoyo. */
+  Summon: 256,
+  /** Coloso: cambió de fase. */
+  PhaseShift: 512,
 } as const;
 
 /** Hasta esta distancia, con línea de visión, se persigue directo en vez de seguir el mapa de distancias. */
@@ -49,8 +68,9 @@ export function navFor(ctx: EnemyContext, radius: number): NavField {
   return radius > BALANCE.nav.smallRadius ? ctx.navLarge : ctx.navSmall;
 }
 
+/** ¿Ve al objetivo actual (jugador o señuelo)? */
 export function seesPlayer(e: Enemy, ctx: EnemyContext): boolean {
-  const p = ctx.player;
+  const p = ctx.target;
   return p.alive && hasLineOfSight(ctx.arena, e.pos.x, e.pos.z, p.pos.x, p.pos.z, e.radius * 0.5);
 }
 
@@ -62,7 +82,7 @@ export function chaseDirection(
   d2: number,
   out: Vec2,
 ): boolean {
-  const p = ctx.player;
+  const p = ctx.target;
   if (!p.alive) return false;
   if (los && d2 <= DIRECT_CHASE_RANGE * DIRECT_CHASE_RANGE) {
     normalizeInto(out, p.pos.x - e.pos.x, p.pos.z - e.pos.z);
@@ -92,9 +112,9 @@ export function turnTowards(current: number, target: number, maxStep: number): n
   return wrapAngle(current + Math.sign(diff) * maxStep);
 }
 
-/** Pone en `out` la dirección unitaria del enemigo al jugador. */
+/** Pone en `out` la dirección unitaria del enemigo al objetivo actual. */
 export function dirToPlayer(e: Enemy, ctx: EnemyContext, out: Vec2): Vec2 {
-  normalizeInto(out, ctx.player.pos.x - e.pos.x, ctx.player.pos.z - e.pos.z);
+  normalizeInto(out, ctx.target.pos.x - e.pos.x, ctx.target.pos.z - e.pos.z);
   if (out.x === 0 && out.z === 0) out.z = -1;
   return out;
 }

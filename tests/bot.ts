@@ -4,7 +4,8 @@
  *
  * Estrategia: prioriza al Reparador y a quien esté avisando un ataque; dispara con adelanto; mantiene la distancia;
  * esquiva cuando una embestida, un rayo fijado, una onda o un proyectil lo van a alcanzar; sale de los peligros;
- * ventila al calentarse; busca objetos cuando le falta vida.
+ * ventila al calentarse; busca objetos cuando le falta vida. Contra el Coloso: esquiva el haz del barrido justo
+ * antes de que pase y sale de los orbes avisados.
  */
 import type { PlayerCommand } from '../src/core/input';
 import {
@@ -22,9 +23,11 @@ import { inFrontArc } from '../src/game/enemies/blindado';
 import { EnemyKind, EnemyState, isDamageable, type Enemy } from '../src/game/enemies/types';
 import { dashLength } from '../src/game/enemies/zumbador';
 import { HazardPhase, hazardPhaseAt, insideHazard } from '../src/game/hazards';
+import { ZoneState } from '../src/game/boss-zones';
+import { ColosoAttack } from '../src/game/enemies/coloso';
 import { PickupType } from '../src/game/pickups';
 import { Team } from '../src/game/projectiles';
-import type { World } from '../src/game/world';
+import { activeWeaponDef, activeWeaponState, type World } from '../src/game/world';
 
 const fwd = vec2();
 const right = vec2();
@@ -75,6 +78,7 @@ function lineDistance(
 export function botCommand(world: World, out: PlayerCommand): PlayerCommand {
   const p = world.player;
   const t = world.tuning;
+  const wd = activeWeaponDef(world);
   const px = p.pos.x;
   const pz = p.pos.z;
   let mx = 0;
@@ -99,7 +103,14 @@ export function botCommand(world: World, out: PlayerCommand): PlayerCommand {
     const d = Math.hypot(ex, ez) || 0.001;
 
     // Repulsión: mantener distancia según el tipo.
-    const keep = e.kind === EnemyKind.Blindado ? 2.6 : e.kind === EnemyKind.Zumbador ? 7 : 5;
+    const keep =
+      e.kind === EnemyKind.Blindado
+        ? 2.6
+        : e.kind === EnemyKind.Zumbador
+          ? 7
+          : e.kind === EnemyKind.Coloso
+            ? 8
+            : 5;
     if (d < keep && e.state !== EnemyState.Materializing) {
       const w = (keep - d) / keep;
       mx -= (ex / d) * w * 2;
@@ -129,6 +140,26 @@ export function botCommand(world: World, out: PlayerCommand): PlayerCommand {
         mz += e.dir.x * 1.5;
       }
     }
+    if (e.kind === EnemyKind.Coloso && d < t.coloso.sweepRange + 1.5) {
+      // Barrido: el sentido del giro se conoce por el sector avisado.
+      const sweeping =
+        e.state === EnemyState.Dash ||
+        (e.state === EnemyState.Windup && e.attack === ColosoAttack.Sweep);
+      if (sweeping) {
+        const angle = yawFromDir(ex, ez);
+        const dirSign = Math.sign(wrapAngle(e.sweepTo - e.sweepFrom)) || 1;
+        const current = e.state === EnemyState.Dash ? e.sweepAngle : e.sweepFrom;
+        const ahead = wrapAngle(angle - current) * dirSign;
+        const remaining = wrapAngle(e.sweepTo - current) * dirSign;
+        // El haz va a pasar por aquí: esquivar cuando esté muy cerca.
+        if (ahead > -0.05 && ahead < remaining + 0.1) {
+          if (e.state === EnemyState.Dash && ahead < 0.2) threat(-ez / d, ex / d);
+          // Mientras tanto, alejarse para salir del alcance si se puede.
+          mx -= (ex / d) * 1.5;
+          mz -= (ez / d) * 1.5;
+        }
+      }
+    }
     if (e.kind === EnemyKind.Blindado && e.state === EnemyState.Windup) {
       if (
         d < t.blindado.attackRange + p.radius + 0.8 &&
@@ -142,8 +173,7 @@ export function botCommand(world: World, out: PlayerCommand): PlayerCommand {
 
     // Objetivo: el Reparador primero; luego quien avisa; los Blindados de frente cuentan menos.
     if (!isDamageable(e)) continue;
-    if (sweepObstacles(world.arena, px, pz, e.pos.x, e.pos.z, t.weapon.projectileRadius) >= 0)
-      continue;
+    if (sweepObstacles(world.arena, px, pz, e.pos.x, e.pos.z, wd.projectileRadius) >= 0) continue;
     let score = d;
     if (e.kind === EnemyKind.Reparador) score -= 25;
     if (e.state === EnemyState.Windup || e.state === EnemyState.Track) score -= 6;
@@ -165,6 +195,22 @@ export function botCommand(world: World, out: PlayerCommand): PlayerCommand {
       if (dist < 2.2) threat(pr.vx / sp, pr.vz / sp);
       mx += (-pr.vz / sp) * 1.5;
       mz += (pr.vx / sp) * 1.5;
+    }
+  }
+
+  // Orbes del Coloso: salir del círculo avisado (o activo) y esquivar si no da tiempo.
+  for (const z of world.bossZones.items) {
+    if (!z.active) continue;
+    const dx = px - z.x;
+    const dz = pz - z.z;
+    const dist = Math.hypot(dx, dz) || 0.001;
+    const reach = z.radius + p.radius + 0.6;
+    if (dist > reach) continue;
+    const k = 5 * (1 - dist / reach) + 1;
+    mx += (dx / dist) * k;
+    mz += (dz / dist) * k;
+    if (z.state === ZoneState.Warn && z.timer < 0.15 && dist < z.radius + p.radius) {
+      threat(-dz / dist, dx / dist);
     }
   }
 
@@ -194,7 +240,7 @@ export function botCommand(world: World, out: PlayerCommand): PlayerCommand {
     const useful =
       (pk.type === PickupType.Health && wantHealth) ||
       (pk.type === PickupType.Shield && p.shield < p.maxShield * 0.5) ||
-      (pk.type === PickupType.Coolant && world.weapon.overheated);
+      (pk.type === PickupType.Coolant && activeWeaponState(world).overheated);
     if (!useful) continue;
     const dx = pk.x - px;
     const dz = pk.z - pz;
@@ -274,7 +320,7 @@ export function botCommand(world: World, out: PlayerCommand): PlayerCommand {
   if (target !== null) {
     const ex = target.pos.x - px;
     const ez = target.pos.z - pz;
-    const lead = Math.hypot(ex, ez) / t.weapon.projectileSpeed;
+    const lead = Math.hypot(ex, ez) / wd.projectileSpeed;
     yaw = yawFromDir(ex + target.vel.x * lead, ez + target.vel.z * lead);
   }
 
@@ -285,12 +331,16 @@ export function botCommand(world: World, out: PlayerCommand): PlayerCommand {
   out.yaw = yaw;
   out.moveX = dir.x * right.x + dir.z * right.z;
   out.moveZ = dir.x * fwd.x + dir.z * fwd.z;
-  const w = world.weapon;
+  const w = activeWeaponState(world);
   const aimed = target !== null && Math.abs(wrapAngle(yaw - p.yaw)) < 0.6;
-  out.fire = aimed && !w.overheated && w.heat < t.weapon.maxHeat - t.weapon.heatPerShot * 1.5;
-  out.vent = w.heat > t.weapon.maxHeat * 0.75 && w.ventCooldown <= 0;
+  out.fire = aimed && !w.overheated && w.heat < wd.maxHeat - wd.heatPerShot * 1.5;
+  out.vent = w.heat > wd.maxHeat * 0.75 && w.ventCooldown <= 0;
   out.aim = false;
   out.dodge = false;
+  out.ability = false;
+  out.weapon = 0;
+  // Entre oleadas elige siempre la primera mejora ofrecida.
+  out.perk = 1;
   if (dodge && p.dodgeCooldown <= 0) {
     // Esquivar perpendicular al ataque, hacia el lado al que ya quería moverse.
     const ax = dodgeX;

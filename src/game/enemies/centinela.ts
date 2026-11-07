@@ -20,7 +20,8 @@ const steerDir = vec2();
 
 export function updateCentinela(e: Enemy, ctx: EnemyContext, dt: number): number {
   const def = ctx.tuning.centinela;
-  const p = ctx.player;
+  // Objetivo actual: el jugador o, si está activo, el señuelo.
+  const p = ctx.target;
   let flags = 0;
   beginStep(e, dt);
 

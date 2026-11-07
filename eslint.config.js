@@ -47,7 +47,16 @@ export default tseslint.config(
     },
   },
   {
-    files: ['src/core/**/*.ts', 'src/game/**/*.ts', 'src/data/**/*.ts', 'src/save/**/*.ts'],
+    files: [
+      'src/core/**/*.ts',
+      'src/game/**/*.ts',
+      'src/data/**/*.ts',
+      'src/save/**/*.ts',
+      // Parte lógica del audio (la parte con WebAudio vive en mixer.ts, sfx.ts y engine.ts).
+      'src/audio/voices.ts',
+      'src/audio/sfx-map.ts',
+      'src/audio/music.ts',
+    ],
     rules: pureRestrictions,
   },
   {

@@ -26,7 +26,10 @@ export class PlayerMesh {
   private readonly legR: Mesh;
   private readonly visorMat: MeshBasicMaterial;
   private readonly muzzleMat: MeshBasicMaterial;
+  private readonly gun: Mesh;
+  private readonly muzzle: Mesh;
   private walkPhase = 0;
+  private weaponSlot = -1;
 
   constructor(
     private readonly scene: Scene,
@@ -71,13 +74,14 @@ export class PlayerMesh {
     const arm = new Mesh(new BoxGeometry(0.12, 0.12, 0.3), dark);
     arm.position.set(0.36, 0.75, -0.12);
     this.body.add(arm);
-    const gun = new Mesh(new BoxGeometry(0.13, 0.15, 0.5), shell);
-    gun.position.set(0.38, 0.78, -0.42);
-    gun.castShadow = shadows;
-    this.body.add(gun);
-    const muzzle = new Mesh(new BoxGeometry(0.09, 0.09, 0.06), this.muzzleMat);
-    muzzle.position.set(0.38, 0.78, -0.7);
-    this.body.add(muzzle);
+    this.gun = new Mesh(new BoxGeometry(0.13, 0.15, 0.5), shell);
+    this.gun.position.set(0.38, 0.78, -0.42);
+    this.gun.castShadow = shadows;
+    this.body.add(this.gun);
+    this.muzzle = new Mesh(new BoxGeometry(0.09, 0.09, 0.06), this.muzzleMat);
+    this.muzzle.position.set(0.38, 0.78, -0.7);
+    this.body.add(this.muzzle);
+    this.setWeapon(0);
 
     // Piernas cortas.
     const legGeo = new BoxGeometry(0.13, 0.36, 0.16);
@@ -114,6 +118,18 @@ export class PlayerMesh {
     // De cian (frío) a naranja (caliente), sin parpadeo.
     const h = Math.min(1, Math.max(0, heatFraction));
     this.muzzleMat.color.setRGB(0.22 + 0.78 * h, 0.88 - 0.38 * h, 1 - 0.85 * h);
+  }
+
+  /** Forma del arma según la ranura: el Dispersor es corto y ancho; el Rayo, largo y fino. */
+  setWeapon(slot: number): void {
+    if (slot === this.weaponSlot) return;
+    this.weaponSlot = slot;
+    const sx = slot === 1 ? 1.6 : slot === 2 ? 0.75 : 1;
+    const sz = slot === 1 ? 0.75 : slot === 2 ? 1.35 : 1;
+    this.gun.scale.set(sx, slot === 1 ? 1.2 : 1, sz);
+    this.gun.position.z = -0.17 - 0.25 * sz;
+    this.muzzle.scale.set(sx, 1, 1);
+    this.muzzle.position.z = -0.2 - 0.5 * sz;
   }
 
   private shown = true;

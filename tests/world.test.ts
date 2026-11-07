@@ -30,7 +30,13 @@ import { spawnPickup } from '../src/game/systems/pickup-system';
 import { spawnPlayerProjectile } from '../src/game/systems/weapon-system';
 import { STRESS_ENEMIES } from '../src/game/systems/stress-system';
 import { createTuning } from '../src/game/tuning';
-import { createWorld, stepWorld, worldFingerprint, type World } from '../src/game/world';
+import {
+  activeWeaponState,
+  createWorld,
+  stepWorld,
+  worldFingerprint,
+  type World,
+} from '../src/game/world';
 import { placeEnemy } from './helpers';
 
 /** Entradas guionizadas: gira, dispara a ráfagas, se mueve, esquiva y ventila de vez en cuando. */
@@ -42,6 +48,7 @@ function scripted(tick: number, out: PlayerCommand): PlayerCommand {
   out.aim = tick % 600 > 500;
   out.dodge = tick % 150 === 0;
   out.vent = tick % 400 === 399;
+  out.perk = 1 + (tick % 3);
   return out;
 }
 
@@ -202,7 +209,8 @@ describe('director', () => {
   });
 
   it('al desactivar a todos: oleada superada con bonificación si fue limpia, descanso y siguiente oleada', () => {
-    const w = createWorld({ seed: 3, arena: HANGAR_COBALTO, god: true });
+    // Sin elección de mejoras (se prueba aparte): directamente el descanso.
+    const w = createWorld({ seed: 3, arena: HANGAR_COBALTO, god: true, perks: false });
     while (w.director.phase !== DirectorPhase.Fighting) stepN(w, 1);
     for (const e of w.enemies.items) {
       if (!e.active) continue;
@@ -264,7 +272,7 @@ describe('daño, escudo del Blindado y ataques', () => {
     front.yaw = 0; // ahora de espaldas al jugador
     spawnPlayerProjectile(w);
     stepN(w, 20);
-    expect(front.health).toBe(front.maxHealth - w.tuning.weapon.damage);
+    expect(front.health).toBe(front.maxHealth - w.tuning.weapons.pulsador.damage);
   });
 
   it('el proyectil del Centinela daña al jugador y una cobertura lo detiene', () => {
@@ -366,8 +374,8 @@ describe('objetos', () => {
     const w = createWorld({ seed: 1, arena: HANGAR_COBALTO });
     w.player.health = 50;
     w.player.shield = 0;
-    w.weapon.heat = 100;
-    w.weapon.overheated = true;
+    activeWeaponState(w).heat = 100;
+    activeWeaponState(w).overheated = true;
     const { x, z } = w.player.pos;
     spawnPickup(w, PickupType.Health, x, z);
     spawnPickup(w, PickupType.Shield, x, z);
@@ -375,7 +383,7 @@ describe('objetos', () => {
     stepWorld(w, emptyCommand());
     expect(w.player.health).toBe(50 + BALANCE.pickups.healthAmount);
     expect(w.player.shield).toBeGreaterThanOrEqual(BALANCE.pickups.shieldAmount);
-    expect(w.weapon.overheated).toBe(false);
+    expect(activeWeaponState(w).overheated).toBe(false);
     expect(w.pickups.activeCount).toBe(0);
   });
 

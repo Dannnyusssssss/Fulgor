@@ -22,6 +22,11 @@ export interface Projectile extends Poolable {
   damage: number;
   /** Metros que le quedan antes de apagarse. */
   remaining: number;
+  /** Alcance total (para calcular la caída de daño con la distancia recorrida). */
+  range: number;
+  /** El daño baja desde esta distancia recorrida hasta `falloffMin` × daño al final del alcance. */
+  falloffStart: number;
+  falloffMin: number;
 }
 
 export function createProjectileSlot(index: number): Projectile {
@@ -38,5 +43,17 @@ export function createProjectileSlot(index: number): Projectile {
     radius: 0.1,
     damage: 0,
     remaining: 0,
+    range: 0,
+    falloffStart: 0,
+    falloffMin: 1,
   };
+}
+
+/** Daño del proyectil según la distancia que ya recorrió (caída lineal tras `falloffStart`). */
+export function projectileDamage(p: Projectile): number {
+  const traveled = p.range - p.remaining;
+  if (p.falloffMin >= 1 || traveled <= p.falloffStart) return p.damage;
+  const span = Math.max(1e-6, p.range - p.falloffStart);
+  const t = Math.min(1, (traveled - p.falloffStart) / span);
+  return p.damage * (1 + (p.falloffMin - 1) * t);
 }

@@ -3,7 +3,8 @@
  */
 import { BALANCE } from '../../data/balance';
 import { GameEvent } from '../events';
-import { EnemyState, kindDef, setState, type EnemyKindId } from '../enemies/types';
+import { COLOSO_VARIANTS } from '../../data/enemies';
+import { EnemyKind, EnemyState, kindDef, setState, type EnemyKindId } from '../enemies/types';
 import type { World } from '../world';
 
 export function spawnEnemy(
@@ -25,8 +26,14 @@ export function spawnEnemy(
   e.vel.z = 0;
   e.yaw = yaw;
   e.radius = def.radius;
-  e.health = def.health;
-  e.maxHealth = def.health;
+  // El Coloso tiene más o menos vida según la arena y la dificultad.
+  const variant = COLOSO_VARIANTS[world.arena.def.id];
+  const health =
+    kind === EnemyKind.Coloso
+      ? def.health * (variant?.healthMultiplier ?? 1) * world.diff.bossHealthMultiplier
+      : def.health;
+  e.health = health;
+  e.maxHealth = health;
   e.dashHit = false;
   e.attackCooldown = 0;
   e.sinceHurt = 999;
@@ -34,6 +41,12 @@ export function spawnEnemy(
   e.strafe = 1;
   e.strafeTimer = 0;
   e.targetIndex = -1;
+  e.pushX = 0;
+  e.pushZ = 0;
+  e.pushTimer = 0;
+  e.phase = 1;
+  e.attack = 0;
+  e.summonCooldown = 0;
   setState(e, EnemyState.Materializing, BALANCE.director.materializeSeconds);
   world.events.emit(GameEvent.EnemySpawn, x, z, e.index, kind);
   return true;

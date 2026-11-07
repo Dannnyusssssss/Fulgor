@@ -3,11 +3,13 @@
  * oleada nueva) para que el juego se pueda jugar sin sonido. Solo toca el DOM cuando un valor cambia.
  */
 import { BALANCE } from '../data/balance';
+import { WEAPON_ORDER } from '../data/weapons';
 import { TEXTS } from '../data/texts';
 import { GameEvent, type EventRecord } from '../game/events';
 import { DirectorPhase } from '../game/director';
+import { EnemyKind } from '../game/enemies/types';
 import { comboMultiplier } from '../game/score';
-import type { World } from '../game/world';
+import { activeWeaponDef, activeWeaponState, type World } from '../game/world';
 import { el, setText, setVisible } from './dom';
 
 interface Bar {
@@ -44,6 +46,13 @@ export class Hud {
   private readonly shield = makeBar(TEXTS.hud.shield, 'shield');
   private readonly heat = makeBar(TEXTS.hud.heat, 'heat');
   private readonly dodge = makeBar(TEXTS.hud.dodgeCooldown, 'dodge');
+  private readonly ability = makeBar('', 'ability');
+  private readonly barrier = makeBar(TEXTS.hud.barrier, 'barrier');
+  /** Ranuras de armas: número y nombre; la activa con borde y en negrita, las bloqueadas atenuadas. */
+  private readonly slots = WEAPON_ORDER.map((id, i) =>
+    el('div', 'hud-slot', `${i + 1} ${TEXTS.weapons[id]}`),
+  );
+  private readonly slotClass = WEAPON_ORDER.map(() => '');
   private readonly heatState = el('div', 'heat-state', '');
   private readonly wave = el('div', 'hud-wave', '');
   private readonly score = el('div', 'hud-score', '');
@@ -51,8 +60,14 @@ export class Hud {
   private readonly banner = el('div', 'hud-banner', '');
   private readonly lowHealth = el('div', 'hud-low', TEXTS.hud.lowHealth);
   private readonly mute = el('div', 'hud-mute', '');
+  private readonly autoFire = el('div', 'hud-autofire', TEXTS.hud.autoFireOn);
   private readonly vignette = el('div', 'vignette');
+  /** Barra del jefe: nombre, fase (texto) y vida. */
+  private readonly boss = el('div', 'hud-boss');
+  private readonly bossBar = makeBar(TEXTS.hud.boss, 'boss');
+  private readonly bossPhase = el('div', 'hud-boss-phase', '');
   private bannerTimer = 0;
+  private totalWaves = 0;
   private hitLevel = 0;
   private lastVignette = -1;
   private lastClass = '';
@@ -60,13 +75,19 @@ export class Hud {
 
   constructor(parent: HTMLElement) {
     const topLeft = el('div', 'hud-top-left');
-    topLeft.append(this.health.root, this.shield.root);
+    topLeft.append(this.health.root, this.shield.root, this.barrier.root);
+    setVisible(this.barrier.root, false);
     const topRight = el('div', 'hud-top-right');
     topRight.append(this.wave, this.score, this.combo);
     const bottom = el('div', 'hud-bottom');
-    bottom.append(this.heatState, this.heat.root, this.dodge.root);
+    const weapons = el('div', 'hud-weapons');
+    weapons.append(...this.slots);
+    bottom.append(weapons, this.heatState, this.heat.root, this.dodge.root, this.ability.root);
+    this.boss.append(this.bossBar.root, this.bossPhase);
+    setVisible(this.boss, false);
     this.root.append(
       this.vignette,
+      this.boss,
       topLeft,
       topRight,
       this.banner,
@@ -74,6 +95,8 @@ export class Hud {
       bottom,
       this.mute,
     );
+    bottom.append(this.autoFire);
+    setVisible(this.autoFire, false);
     this.root.setAttribute('aria-hidden', 'true');
     setVisible(this.lowHealth, false);
     setVisible(this.banner, false);
@@ -88,13 +111,19 @@ export class Hud {
     setText(this.mute, muted ? TEXTS.hud.mutedOn : TEXTS.hud.mutedOff);
   }
 
+  /** Indicador de disparo automático encendido (texto, no solo color). */
+  setAutoFire(on: boolean): void {
+    setVisible(this.autoFire, on);
+  }
+
   setReduceFlashes(reduce: boolean): void {
     this.reduceFlashes = reduce;
   }
 
   onEvent(e: EventRecord): void {
     if (e.type === GameEvent.WaveStart) {
-      setText(this.banner, `${TEXTS.hud.waveIncoming} ${e.a}`);
+      const bossWave = e.a >= this.totalWaves && this.totalWaves > 0;
+      setText(this.banner, bossWave ? TEXTS.hud.bossIncoming : `${TEXTS.hud.waveIncoming} ${e.a}`);
       setVisible(this.banner, true);
       this.bannerTimer = 2.2;
     } else if (e.type === GameEvent.WaveCleared) {
@@ -102,6 +131,10 @@ export class Hud {
       setText(this.banner, `${TEXTS.hud.waveCleared}${bonus}`);
       setVisible(this.banner, true);
       this.bannerTimer = 2.4;
+    } else if (e.type === GameEvent.BossPhase) {
+      setText(this.banner, `${TEXTS.hud.bossPhaseBanner} · ${TEXTS.hud.bossPhase} ${e.a}/3`);
+      setVisible(this.banner, true);
+      this.bannerTimer = 2;
     } else if (e.type === GameEvent.PlayerHit) {
       // Nivel continuo: varios golpes seguidos mantienen la viñeta, no la hacen parpadear.
       this.hitLevel = Math.min(1, this.hitLevel + 0.45);
@@ -109,15 +142,58 @@ export class Hud {
   }
 
   update(world: World, dt: number): void {
+    this.totalWaves = world.waves.length;
     const p = world.player;
-    const w = world.weapon;
-    const def = world.tuning.weapon;
+    // Jefe: barra visible solo mientras está en la arena.
+    let boss = null;
+    for (const e of world.enemies.items) {
+      if (e.active && e.kind === EnemyKind.Coloso) {
+        boss = e;
+        break;
+      }
+    }
+    setVisible(this.boss, boss !== null);
+    if (boss !== null) {
+      setBar(this.bossBar, boss.health / boss.maxHealth, `${Math.ceil(Math.max(0, boss.health))}`);
+      setText(this.bossPhase, `${TEXTS.hud.bossPhase} ${boss.phase}/3`);
+    }
+    const w = activeWeaponState(world);
+    const def = activeWeaponDef(world);
     setBar(this.health, p.health / p.maxHealth, String(Math.ceil(p.health)));
     setBar(this.shield, p.shield / p.maxShield, String(Math.ceil(p.shield)));
     setBar(this.heat, w.heat / def.maxHeat, `${Math.round((w.heat / def.maxHeat) * 100)}%`);
     const dodgeMax = world.tuning.player.dodge.cooldown;
     const dodgeFrac = dodgeMax > 0 ? 1 - p.dodgeCooldown / dodgeMax : 1;
     setBar(this.dodge, dodgeFrac, p.dodgeCooldown <= 0 ? TEXTS.hud.dodgeReady : '');
+
+    // Ranuras de armas (solo cambia el DOM si cambia el estado).
+    this.slots.forEach((slot, i) => {
+      const unlocked = world.unlockedWeapons[i] === true;
+      const cls = `hud-slot${i === world.activeWeapon ? ' is-active' : ''}${unlocked ? '' : ' is-locked'}`;
+      if (this.slotClass[i] !== cls) {
+        this.slotClass[i] = cls;
+        slot.className = cls;
+        const id = WEAPON_ORDER[i];
+        if (id !== undefined) {
+          setText(slot, `${i + 1} ${unlocked ? TEXTS.weapons[id] : TEXTS.hud.locked}`);
+        }
+      }
+    });
+
+    // Habilidad: barra de recarga con su nombre; "lista" cuando se puede usar.
+    const a = world.ability;
+    setText(this.ability.root.firstElementChild as HTMLElement, TEXTS.abilities[a.id]);
+    const abilityFrac = a.cooldownMax > 0 ? 1 - a.cooldown / a.cooldownMax : 1;
+    setBar(
+      this.ability,
+      a.cooldown <= 0 ? 1 : abilityFrac,
+      a.cooldown <= 0 ? TEXTS.hud.abilityReady : `${Math.ceil(a.cooldown)} s`,
+    );
+    const hasBarrier = p.barrierTimer > 0 && p.barrier > 0;
+    setVisible(this.barrier.root, hasBarrier);
+    if (hasBarrier) {
+      setBar(this.barrier, p.barrier / Math.max(1, p.barrierMax), String(Math.ceil(p.barrier)));
+    }
 
     let heatText = '';
     if (w.overheated) heatText = TEXTS.hud.overheated;

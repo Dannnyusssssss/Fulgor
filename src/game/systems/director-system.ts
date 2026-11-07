@@ -7,7 +7,8 @@ import { BALANCE } from '../../data/balance';
 import { isCircleFree } from '../collision';
 import { composeWave, DirectorPhase } from '../director';
 import { GameEvent } from '../events';
-import type { EnemyKindId } from '../enemies/types';
+import { EnemyKind, type EnemyKindId } from '../enemies/types';
+import { makeOffer } from '../perks';
 import { onWaveCleared, onWaveStart } from '../score';
 import type { World } from '../world';
 import { spawnEnemy } from './spawn';
@@ -40,6 +41,16 @@ export function updateDirectorSystem(world: World, dt: number): void {
           d.phase = DirectorPhase.Victory;
           world.victory = true;
           world.events.emit(GameEvent.Victory, world.player.pos.x, world.player.pos.z);
+        } else if (
+          world.perksEnabled &&
+          makeOffer(world.perks, world.rng.perks, {
+            unlockedWeapons: world.unlockedWeapons,
+            ability: world.ability.id,
+          }) > 0
+        ) {
+          // Elegir mejora: la simulación se detiene hasta que llegue la elección (ver stepWorld).
+          d.phase = DirectorPhase.PerkChoice;
+          world.events.emit(GameEvent.PerkOffer, 0, 0, world.perks.offerCount);
         } else {
           d.phase = DirectorPhase.Rest;
           d.timer = cfg.restSeconds;
@@ -75,11 +86,29 @@ function startNextWave(world: World): void {
   world.events.emit(GameEvent.WaveStart, 0, 0, d.wave, d.queueLength);
 }
 
+/** El Coloso aparece en el punto de jefe de la arena más lejano al jugador. */
+function spawnBoss(world: World): boolean {
+  const p = world.player;
+  let best = world.arena.def.bossSpawns[0];
+  let bestD = -1;
+  for (const sp of world.arena.def.bossSpawns) {
+    const d = distSq(sp.x, sp.z, p.pos.x, p.pos.z);
+    if (d > bestD) {
+      bestD = d;
+      best = sp;
+    }
+  }
+  if (best === undefined) return false;
+  const yaw = yawFromDir(p.pos.x - best.x, p.pos.z - best.z);
+  return spawnEnemy(world, EnemyKind.Coloso, best.x, best.z, yaw);
+}
+
 /**
  * Elige el portal: primero los puntos lejanos fuera del campo de visión, si no los lejanos, si no cualquiera.
  * Siempre hace dos tiradas del flujo de oleadas (punto y desplazamiento) para no desincronizar las oleadas siguientes.
  */
-function spawnAtPortal(world: World, kind: EnemyKindId): boolean {
+export function spawnAtPortal(world: World, kind: EnemyKindId): boolean {
+  if (kind === EnemyKind.Coloso) return spawnBoss(world);
   const cfg = BALANCE.director;
   const points = world.arena.def.enemySpawns;
   const roll = world.rng.waves.next();

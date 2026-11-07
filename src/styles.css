@@ -255,6 +255,50 @@ body {
   text-align: center;
 }
 
+/* ---------- Mejoras ---------- */
+.perk-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.perk-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-height: 150px;
+  padding: 12px;
+  text-align: left;
+}
+
+.perk-key {
+  font-weight: 700;
+  font-size: 1.2rem;
+  color: var(--accent-strong);
+}
+
+.perk-name {
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.perk-desc {
+  line-height: 1.4;
+}
+
+.perk-level {
+  margin-top: auto;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 720px) {
+  .perk-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ---------- HUD ---------- */
 .hud {
   position: absolute;
@@ -308,6 +352,73 @@ body {
 
 .bar-dodge {
   grid-template-columns: 64px 1fr 96px;
+}
+
+.hud-boss {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(460px, 46vw);
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(5, 8, 18, 0.78);
+  border: 1px solid var(--warn);
+}
+
+.bar-boss {
+  grid-template-columns: 64px 1fr 56px;
+}
+
+.bar-boss .bar-fill {
+  background: var(--warn);
+}
+
+.hud-boss-phase {
+  text-align: center;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.bar-ability {
+  grid-template-columns: 64px 1fr 96px;
+}
+
+.bar-ability .bar-fill {
+  background: var(--accent-strong);
+}
+
+.bar-barrier .bar-fill {
+  background: var(--accent);
+}
+
+/* Ranuras de armas: la activa se distingue por borde y negrita (no solo por color). */
+.hud-weapons {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 0.88rem;
+}
+
+.hud-slot {
+  flex: 1;
+  padding: 2px 4px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.hud-slot.is-active {
+  border-color: var(--accent-strong);
+  font-weight: 700;
+}
+
+/* Bloqueada: texto gris con contraste suficiente (más de 4.5:1 sobre el panel). */
+.hud-slot.is-locked {
+  color: #9aa6bd;
+  font-style: italic;
 }
 
 .bar-track {
@@ -379,6 +490,14 @@ body {
   color: var(--danger);
   font-weight: 700;
   letter-spacing: 0.08em;
+}
+
+.hud-autofire {
+  margin-top: 4px;
+  text-align: center;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--accent-strong);
 }
 
 .hud-mute {

@@ -12,10 +12,15 @@ export const EnemyKind = {
   Blindado: 3,
   Reparador: 4,
   Vigia: 5,
+  /** Jefe. */
+  Coloso: 6,
 } as const;
 export type EnemyKindId = (typeof EnemyKind)[keyof typeof EnemyKind];
 
-export const ENEMY_KIND_IDS: readonly EnemyKindId[] = [1, 2, 3, 4, 5];
+export const ENEMY_KIND_IDS: readonly EnemyKindId[] = [1, 2, 3, 4, 5, 6];
+
+/** Tipos normales (sin el jefe). */
+export const REGULAR_KIND_IDS: readonly EnemyKindId[] = [1, 2, 3, 4, 5];
 
 const KIND_NAMES: Readonly<Record<EnemyKindId, EnemyKindName>> = {
   1: 'zumbador',
@@ -23,6 +28,7 @@ const KIND_NAMES: Readonly<Record<EnemyKindId, EnemyKindName>> = {
   3: 'blindado',
   4: 'reparador',
   5: 'vigia',
+  6: 'coloso',
 };
 
 export function kindName(kind: EnemyKindId): EnemyKindName {
@@ -50,6 +56,8 @@ export const EnemyState = {
   Recover: 4,
   /** Vigía: la línea láser sigue al jugador (también es aviso visible). */
   Track: 5,
+  /** Coloso: pausa estable al cambiar de fase (no recibe daño ni ataca). */
+  Shift: 6,
 } as const;
 export type EnemyStateId = (typeof EnemyState)[keyof typeof EnemyState];
 
@@ -82,6 +90,18 @@ export interface Enemy extends Poolable {
   targetIndex: number;
   /** Último impacto bloqueado por el escudo (para el efecto visual). */
   sinceBlocked: number;
+  /** Empuje de la Onda: velocidad y tiempo que le queda (se aplica con colisión, sin atravesar paredes). */
+  pushX: number;
+  pushZ: number;
+  pushTimer: number;
+  /** Coloso: fase (1, 2 o 3), ataque en curso, ángulos del barrido y espera de la llamada de apoyo. */
+  phase: number;
+  attack: number;
+  sweepFrom: number;
+  sweepTo: number;
+  sweepAngle: number;
+  sweepPrev: number;
+  summonCooldown: number;
 }
 
 export function createEnemySlot(index: number): Enemy {
@@ -107,12 +127,24 @@ export function createEnemySlot(index: number): Enemy {
     strafeTimer: 0,
     targetIndex: -1,
     sinceBlocked: 999,
+    pushX: 0,
+    pushZ: 0,
+    pushTimer: 0,
+    phase: 1,
+    attack: 0,
+    sweepFrom: 0,
+    sweepTo: 0,
+    sweepAngle: 0,
+    sweepPrev: 0,
+    summonCooldown: 0,
   };
 }
 
 /** ¿Puede recibir daño? */
 export function isDamageable(e: Enemy): boolean {
-  return e.active && e.state !== EnemyState.Materializing && e.health > 0;
+  return (
+    e.active && e.state !== EnemyState.Materializing && e.state !== EnemyState.Shift && e.health > 0
+  );
 }
 
 export function setState(e: Enemy, state: EnemyStateId, duration: number): void {

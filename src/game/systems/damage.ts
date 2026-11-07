@@ -16,7 +16,7 @@ import { spawnPickup } from './pickup-system';
  * Devuelve el daño aplicado (0 si estaba esquivando o en modo invulnerable).
  */
 export function hurtPlayer(world: World, amount: number, source: number, silent = false): number {
-  const dmg = amount * world.diff.damageTakenMultiplier;
+  const dmg = amount * world.diff.damageTakenMultiplier * world.mods.damageTakenMul;
   const applied = damagePlayer(world.player, dmg, world.god);
   if (applied > 0) {
     onPlayerDamaged(world.score);
@@ -44,6 +44,11 @@ function destroyEnemy(world: World, e: Enemy): void {
   const def = kindDef(world.tuning, e.kind);
   addKill(world.score, def.score, world.diff.scoreMultiplier);
   world.events.emit(GameEvent.EnemyDestroyed, e.pos.x, e.pos.z, e.kind, e.index);
+  // Mejora de reciclaje: cada desactivación devuelve algo de vida.
+  const pl = world.player;
+  if (world.mods.healOnKill > 0 && pl.alive) {
+    pl.health = Math.min(pl.maxHealth, pl.health + world.mods.healOnKill);
+  }
   // Caída de objeto: siempre dos tiradas del flujo de combate (probabilidad y tipo).
   const cfg = BALANCE.pickups;
   const chance = world.rng.combat.next();

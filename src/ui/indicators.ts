@@ -59,7 +59,11 @@ export class OffscreenIndicators {
         for (const e of world.enemies.items) {
           if (used >= MAX_INDICATORS) break;
           if (!e.active || e.state === EnemyState.Materializing) continue;
-          const warn = e.state === EnemyState.Windup || e.state === EnemyState.Track;
+          // El barrido del Coloso (estado Dash) también es un ataque en curso.
+          const warn =
+            e.state === EnemyState.Windup ||
+            e.state === EnemyState.Track ||
+            (e.kind === EnemyKind.Coloso && e.state === EnemyState.Dash);
           const healer = e.kind === EnemyKind.Reparador;
           const important = warn || healer;
           if ((pass === 0) !== important) continue;

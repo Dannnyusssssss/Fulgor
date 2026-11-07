@@ -2,20 +2,26 @@
  * Sistema de enemigos: IA por tipo y efectos de sus ataques (embestida, proyectil, onda y rayo),
  * separación entre enemigos y hash espacial.
  */
-import { distSq, segmentCircleT } from '../../core/math';
+import { distSq, forwardInto, segmentCircleT, vec2, yawFromDir } from '../../core/math';
+import { COLOSO_VARIANTS } from '../../data/enemies';
+import { ZoneState } from '../boss-zones';
 import { BALANCE } from '../../data/balance';
-import { resolveCircle, sweepObstacles } from '../collision';
+import { moveCircle, resolveCircle, sweepObstacles } from '../collision';
 import { inFrontArc, updateBlindado } from '../enemies/blindado';
 import { updateCentinela } from '../enemies/centinela';
+import { bossWarn, supportAlive, sweepCrosses, updateColoso } from '../enemies/coloso';
 import { EnemyFlag, type EnemyContext } from '../enemies/common';
 import { updateReparador } from '../enemies/reparador';
-import { EnemyKind, type Enemy } from '../enemies/types';
+import { EnemyKind, kindFromName, type Enemy } from '../enemies/types';
 import { updateVigia } from '../enemies/vigia';
 import { dashLength, updateZumbador } from '../enemies/zumbador';
 import { GameEvent } from '../events';
 import { Team } from '../projectiles';
 import type { World } from '../world';
 import { hurtPlayer } from './damage';
+import { spawnAtPortal } from './director-system';
+
+const fwdScratch = vec2();
 
 /** Contexto de IA por mundo, creado una sola vez (no se crean objetos en cada paso). */
 const contexts = new WeakMap<World, EnemyContext>();
@@ -28,6 +34,7 @@ function contextFor(world: World): EnemyContext {
       navSmall: world.navSmall,
       navLarge: world.navLarge,
       player: world.player,
+      target: world.aiTarget,
       combat: world.rng.combat,
       tuning: world.tuning,
       enemies: world.enemies.items,
@@ -49,6 +56,8 @@ function runAi(e: Enemy, ctx: EnemyContext, dt: number): number {
       return updateReparador(e, ctx, dt);
     case EnemyKind.Vigia:
       return updateVigia(e, ctx, dt);
+    case EnemyKind.Coloso:
+      return updateColoso(e, ctx, dt);
     default:
       return 0;
   }
@@ -60,11 +69,23 @@ export function updateEnemySystem(world: World, dt: number): void {
   for (const e of world.enemies.items) {
     if (!e.active) continue;
     const flags = runAi(e, ctx, dt);
+    // Empuje de la Onda: se aplica con colisión, así nunca mete a un enemigo en una pared.
+    if (e.pushTimer > 0) {
+      const step = Math.min(dt, e.pushTimer);
+      moveCircle(world.arena, e.pos, e.radius, e.pushX * step, e.pushZ * step);
+      e.pushTimer -= dt;
+    }
     if (flags === 0) continue;
 
     if (flags & EnemyFlag.TelegraphStarted) {
-      const len = e.kind === EnemyKind.Zumbador ? dashLength(t.zumbador) : 0;
-      world.events.emit(GameEvent.TelegraphStart, e.pos.x, e.pos.z, e.index, e.kind, len);
+      // c: longitud de la embestida del Zumbador, o el ataque elegido por el Coloso.
+      const extra =
+        e.kind === EnemyKind.Zumbador
+          ? dashLength(t.zumbador)
+          : e.kind === EnemyKind.Coloso
+            ? e.attack
+            : 0;
+      world.events.emit(GameEvent.TelegraphStart, e.pos.x, e.pos.z, e.index, e.kind, extra);
     }
     if (flags & EnemyFlag.HitPlayer) {
       if (hurtPlayer(world, t.zumbador.dashDamage, e.index) > 0) e.dashHit = true;
@@ -72,6 +93,94 @@ export function updateEnemySystem(world: World, dt: number): void {
     if (flags & EnemyFlag.Fire) fireEnemyProjectile(world, e);
     if (flags & EnemyFlag.Shockwave) shockwave(world, e);
     if (flags & EnemyFlag.Beam) beam(world, e);
+    if (flags & EnemyFlag.Sweep) bossSweep(world, e);
+    if (flags & EnemyFlag.Volley) bossVolley(world, e);
+    if (flags & EnemyFlag.Orbs) bossOrbs(world, e);
+    if (flags & EnemyFlag.Summon) bossSummon(world, ctx);
+    if (flags & EnemyFlag.PhaseShift) {
+      world.events.emit(GameEvent.BossPhase, e.pos.x, e.pos.z, e.phase);
+    }
+  }
+}
+
+/** Barrido del Coloso: daña una vez si el haz pasa por el jugador y no lo tapa una cobertura. */
+function bossSweep(world: World, e: Enemy): void {
+  const def = world.tuning.coloso;
+  const pl = world.player;
+  if (e.dashHit || !pl.alive) return;
+  if (!sweepCrosses(e, def, pl.pos.x, pl.pos.z, pl.radius)) return;
+  if (sweepObstacles(world.arena, e.pos.x, e.pos.z, pl.pos.x, pl.pos.z, 0.05) >= 0) return;
+  if (hurtPlayer(world, def.sweepDamage, e.index) > 0) e.dashHit = true;
+}
+
+/** Ráfaga del Coloso: abanico fijo y simétrico de proyectiles lentos alrededor de la dirección avisada. */
+function bossVolley(world: World, e: Enemy): void {
+  const def = world.tuning.coloso;
+  const n = Math.max(1, def.volleyCount);
+  const base = yawFromDir(e.dir.x, e.dir.z);
+  for (let k = 0; k < n; k++) {
+    const p = world.projectiles.acquire();
+    if (p === null) break;
+    const yaw = base + (n > 1 ? -def.volleySpread / 2 + (def.volleySpread * k) / (n - 1) : 0);
+    forwardInto(fwdScratch, yaw);
+    p.team = Team.Enemy;
+    // Salen del borde del Coloso para no nacer dentro de su cuerpo.
+    p.x = e.pos.x + fwdScratch.x * e.radius;
+    p.z = e.pos.z + fwdScratch.z * e.radius;
+    p.prevX = p.x;
+    p.prevZ = p.z;
+    p.vx = fwdScratch.x * def.volleySpeed;
+    p.vz = fwdScratch.z * def.volleySpeed;
+    p.radius = def.volleyRadius;
+    p.damage = def.volleyDamage;
+    p.remaining = def.volleyRange;
+    p.range = def.volleyRange;
+    p.falloffStart = def.volleyRange;
+    p.falloffMin = 1;
+  }
+  world.events.emit(GameEvent.EnemyFire, e.pos.x, e.pos.z, e.index);
+}
+
+/** Orbes: el primero donde está el objetivo; el resto alrededor (flujo de combate, dos tiradas por orbe). */
+function bossOrbs(world: World, e: Enemy): void {
+  const def = world.tuning.coloso;
+  const t = world.aiTarget;
+  const inner = world.arena.inner;
+  const linger = e.phase >= 3;
+  const r0 = def.orbRadius;
+  for (let k = 0; k < def.orbCount; k++) {
+    const a = world.rng.combat.next() * Math.PI * 2;
+    const r = world.rng.combat.next() * def.orbScatter;
+    const ox = k === 0 ? 0 : Math.cos(a) * (r0 + r);
+    const oz = k === 0 ? 0 : Math.sin(a) * (r0 + r);
+    const x = Math.min(inner.maxX - r0, Math.max(inner.minX + r0, t.pos.x + ox));
+    const z = Math.min(inner.maxZ - r0, Math.max(inner.minZ + r0, t.pos.z + oz));
+    const zone = world.bossZones.acquire();
+    if (zone === null) break;
+    zone.x = x;
+    zone.z = z;
+    zone.radius = r0;
+    zone.state = ZoneState.Warn;
+    zone.warnDuration = bossWarn(def.orbWarnSeconds);
+    zone.timer = zone.warnDuration;
+    zone.impactDamage = def.orbDamage;
+    zone.lingerSeconds = linger ? def.orbLingerSeconds : 0;
+    zone.lingerDps = def.orbLingerDps;
+    world.events.emit(GameEvent.ZoneWarn, x, z, zone.radius, zone.warnDuration);
+  }
+}
+
+/** Llamada: trae enemigos de apoyo por portales sin pasar del tope. */
+function bossSummon(world: World, ctx: EnemyContext): void {
+  const def = world.tuning.coloso;
+  const variant = COLOSO_VARIANTS[world.arena.def.id];
+  const kinds = variant?.summons ?? ['zumbador'];
+  const room = Math.max(0, def.supportCap - supportAlive(ctx));
+  const n = Math.min(def.summonCount, room);
+  for (let k = 0; k < n; k++) {
+    const roll = world.rng.combat.next();
+    const name = kinds[Math.floor(roll * kinds.length)] ?? 'zumbador';
+    spawnAtPortal(world, kindFromName(name));
   }
 }
 
@@ -90,6 +199,9 @@ function fireEnemyProjectile(world: World, e: Enemy): void {
   p.radius = def.projectileRadius;
   p.damage = def.projectileDamage;
   p.remaining = def.projectileRange;
+  p.range = def.projectileRange;
+  p.falloffStart = def.projectileRange;
+  p.falloffMin = 1;
   world.events.emit(GameEvent.EnemyFire, e.pos.x, e.pos.z, e.index);
 }
 

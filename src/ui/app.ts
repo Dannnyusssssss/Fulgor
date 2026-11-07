@@ -3,20 +3,34 @@
  * captura del puntero, foco, pérdida de contexto WebGL, bucle de render, cambio de arena, progreso y ajustes guardados.
  */
 import type { Mesh } from 'three';
+import { AudioEngine } from '../audio/engine';
 import { FlashBudget } from '../core/flash-budget';
+import { createPadState, PAD, PadMapper } from '../core/gamepad';
 import { emptyCommand, InputMapper } from '../core/input';
 import { FixedTimestep } from '../core/loop';
-import { lerp } from '../core/math';
+import { clamp, damp, lerp } from '../core/math';
 import type { DebugParams } from '../core/url-params';
 import { ARENAS, arenaById, type ArenaDef } from '../data/arenas';
 import { BALANCE } from '../data/balance';
 import { PREVENT_DEFAULT_CODES } from '../data/controls';
+import type { AbilityId } from '../data/abilities';
 import type { Difficulty } from '../data/difficulty';
+import { PERKS } from '../data/perks';
 import { TEXTS } from '../data/texts';
+import { aimAssistDelta } from '../game/aim-assist';
+import { DirectorPhase } from '../game/director';
 import { GameEvent } from '../game/events';
 import { createTuning, type Tuning } from '../game/tuning';
-import { createWorld, stepWorld, type World } from '../game/world';
+import {
+  activeWeaponDef,
+  activeWeaponState,
+  createWorld,
+  stepWorld,
+  type World,
+} from '../game/world';
+import { AbilityEffects } from '../render/ability-fx';
 import { buildArenaView, type ArenaView } from '../render/arena-mesh';
+import { BossView } from '../render/boss-mesh';
 import { ThirdPersonCamera } from '../render/camera-tps';
 import { EnemyMeshes } from '../render/enemy-meshes';
 import { Effects } from '../render/fx';
@@ -30,6 +44,7 @@ import { bestFor, isUnlocked, recordRun } from '../save/progress';
 import type { SaveData, Settings } from '../save/schema';
 import { writeSave, type StorageLike } from '../save/storage';
 import { DebugOverlay } from './debug-overlay';
+import { GamepadReader } from './gamepad-dom';
 import { Hud } from './hud';
 import { OffscreenIndicators } from './indicators';
 import {
@@ -37,15 +52,21 @@ import {
   ErrorScreen,
   Notice,
   PauseScreen,
+  PerkScreen,
   ResultsScreen,
   SelectScreen,
   SettingsScreen,
   StartScreen,
+  type PerkOption,
   type SelectHost,
   type SettingsHost,
 } from './screens';
 
-type AppState = 'menu' | 'select' | 'playing' | 'paused' | 'results' | 'lost-context';
+type AppState = 'menu' | 'select' | 'playing' | 'paused' | 'perks' | 'results' | 'lost-context';
+
+/** Cambio del campo de visión (grados) al esquivar y al apuntar. */
+const FOV_DODGE = 4;
+const FOV_AIM = -5;
 
 /** Segundos entre el final de la partida y la pantalla de resultados (deja ver el final). */
 const END_DELAY = 1.2;
@@ -84,6 +105,18 @@ class App implements SettingsHost, SelectHost {
     BALANCE.flash.windowSeconds,
   );
   private readonly cmd = emptyCommand();
+  /** Audio sintetizado: el contexto se crea con el primer gesto del jugador. */
+  private readonly audio = new AudioEngine();
+  /** Mando: lectura del navegador y mapeo puro. */
+  private readonly padReader = new GamepadReader();
+  private readonly padMapper = new PadMapper();
+  private readonly pad = createPadState();
+  private padConnected = false;
+  private padFireWas = false;
+  /** Disparo automático encendido (con la asistencia activada). */
+  private autoFireOn = false;
+  /** Desfase suave del campo de visión (esquiva y apuntado), apagado con "Reducir movimiento". */
+  private fovOffset = 0;
   private readonly look = { x: 0, y: 0 };
   private readonly tuning: Tuning = createTuning();
   private world: World;
@@ -97,6 +130,8 @@ class App implements SettingsHost, SelectHost {
   private readonly projectileMeshes: ProjectileMeshes;
   private readonly pickupMeshes: PickupMeshes;
   private readonly fx: Effects;
+  private readonly abilityFx: AbilityEffects;
+  private readonly bossView: BossView;
   private readonly reticle: Reticle;
   private readonly hud: Hud;
   private readonly indicators: OffscreenIndicators;
@@ -106,6 +141,9 @@ class App implements SettingsHost, SelectHost {
   private readonly settingsScreen: SettingsScreen;
   private readonly pause: PauseScreen;
   private readonly results: ResultsScreen;
+  private readonly perkScreen: PerkScreen;
+  /** Mejora elegida en la pantalla de mejoras, pendiente de entregar a la simulación (0 = ninguna). */
+  private pendingPerk = 0;
   private readonly click: ClickOverlay;
   private readonly error: ErrorScreen;
   private readonly debug: DebugOverlay | null;
@@ -139,6 +177,8 @@ class App implements SettingsHost, SelectHost {
     this.projectileMeshes = new ProjectileMeshes(scene, BALANCE.pools.projectiles);
     this.pickupMeshes = new PickupMeshes(scene);
     this.fx = new Effects(scene, this.budget);
+    this.abilityFx = new AbilityEffects(scene, this.budget);
+    this.bossView = new BossView(scene, this.budget);
     this.reticle = new Reticle(scene);
 
     const ui = opts.uiRoot;
@@ -171,6 +211,7 @@ class App implements SettingsHost, SelectHost {
       () => this.showSelect(),
       () => this.toMenu(),
     );
+    this.perkScreen = new PerkScreen(ui, (choice) => this.choosePerk(choice));
     this.click = new ClickOverlay(ui, () => this.resume());
     this.error = new ErrorScreen(ui);
     this.debug = opts.debug.debug ? new DebugOverlay(ui, this.tuning, () => this.world) : null;
@@ -215,6 +256,9 @@ class App implements SettingsHost, SelectHost {
     }
     this.fx.setSettings({ reduceMotion: s.reduceMotion, quality: s.quality });
     this.hud.setMuted(s.muted);
+    this.audio.setLevels({ muted: s.muted, volume: s.volume, musicVolume: s.musicVolume });
+    this.camera.setReduceMotion(s.reduceMotion);
+    if (!s.autoFire) this.setAutoFire(false);
     this.hud.setReduceFlashes(s.reduceFlashes);
   }
 
@@ -243,6 +287,15 @@ class App implements SettingsHost, SelectHost {
 
   best(arena: string, difficulty: Difficulty): number {
     return bestFor(this.save, arena, difficulty);
+  }
+
+  ability(): AbilityId {
+    return this.save.progress.lastAbility;
+  }
+
+  selectAbility(id: AbilityId): void {
+    this.save.progress.lastAbility = id;
+    this.persist();
   }
 
   selection(): { arena: string; difficulty: Difficulty } {
@@ -274,6 +327,8 @@ class App implements SettingsHost, SelectHost {
       tuning: this.tuning,
       startWave: d.wave ?? 1,
       stress: d.stress,
+      weapons: this.save.progress.unlockedWeapons,
+      ability: this.save.progress.lastAbility,
     });
   }
 
@@ -293,6 +348,7 @@ class App implements SettingsHost, SelectHost {
     this.settingsScreen.hide();
     this.pause.hide();
     this.results.hide();
+    this.perkScreen.hide();
     this.click.hide();
   }
 
@@ -321,23 +377,41 @@ class App implements SettingsHost, SelectHost {
     if (def.id !== this.builtArena.id) this.rebuildArena(def);
     this.world = this.createWorld(seed, def);
     this.fx.clear();
+    this.abilityFx.clear();
+    this.bossView.clear();
     this.hud.reset();
     this.camera.reset(def.playerSpawn.yaw);
     this.input.releaseAll();
     this.timestep.reset();
     this.endTimer = 0;
+    this.setAutoFire(false);
     this.playerMesh.setVisible(true);
     this.enterPlaying();
   }
 
-  private enterPlaying(): void {
+  /** `lock`: pedir la captura del puntero (solo si viene de un gesto de teclado o ratón, no del mando). */
+  private enterPlaying(lock = true): void {
     this.state = 'playing';
     this.hideScreens();
     this.hud.setVisible(true);
     this.reticle.setVisible(true);
     this.timestep.reset();
-    this.requestLock();
+    if (lock) this.requestLock();
     this.opts.canvas.focus({ preventScroll: true });
+  }
+
+  private setAutoFire(on: boolean): void {
+    this.autoFireOn = on;
+    this.hud.setAutoFire(on);
+  }
+
+  /** Lee el mando una vez por frame y avisa al conectarlo o desconectarlo. */
+  private pollPad(): void {
+    this.padMapper.update(this.padReader.read(), this.pad);
+    if (this.pad.connected !== this.padConnected) {
+      this.padConnected = this.pad.connected;
+      this.notice.show(this.padConnected ? TEXTS.gamepadConnected : TEXTS.gamepadDisconnected, 3);
+    }
   }
 
   private pauseGame(): void {
@@ -349,9 +423,39 @@ class App implements SettingsHost, SelectHost {
     this.pause.show();
   }
 
-  private resume(): void {
+  private resume(lock = true): void {
     if (this.state !== 'paused') return;
-    this.enterPlaying();
+    this.enterPlaying(lock);
+  }
+
+  /** Abre la elección de mejoras: suelta la captura del puntero sin pausar (no es una pausa). */
+  private showPerks(): void {
+    this.state = 'perks';
+    this.input.releaseAll();
+    this.exitLock();
+    this.hideScreens();
+    const perks = this.world.perks;
+    const options: PerkOption[] = [];
+    for (let i = 0; i < perks.offerCount; i++) {
+      const index = perks.offer[i] ?? -1;
+      const def = PERKS[index];
+      if (def === undefined) continue;
+      const text = TEXTS.perks[def.id];
+      options.push({
+        name: text?.name ?? def.id,
+        description: text?.description ?? '',
+        level: perks.levels[index] ?? 0,
+        maxLevel: def.maxLevel,
+      });
+    }
+    this.perkScreen.showOptions(options);
+  }
+
+  /** Se llama desde un gesto del jugador (tecla o clic): vuelve al juego y pide de nuevo la captura. */
+  private choosePerk(choice: number, lock = true): void {
+    if (this.state !== 'perks' || choice < 1 || choice > this.world.perks.offerCount) return;
+    this.pendingPerk = choice;
+    this.enterPlaying(lock);
   }
 
   private openSettings(from: 'menu' | 'paused'): void {
@@ -387,11 +491,20 @@ class App implements SettingsHost, SelectHost {
     let best = bestFor(this.save, arena, w.difficulty);
     let newRecord = false;
     let unlocked: string | null = null;
+    let unlockedWeapons: string[] = [];
     if (counts) {
-      const r = recordRun(this.save, arena, w.difficulty, w.score.points, w.victory);
+      const r = recordRun(
+        this.save,
+        arena,
+        w.difficulty,
+        w.score.points,
+        w.victory,
+        w.director.wave,
+      );
       best = r.best;
       newRecord = r.newRecord;
       unlocked = r.unlocked;
+      unlockedWeapons = r.unlockedWeapons.map((id) => TEXTS.weapons[id]);
       this.persist();
     }
     this.results.setResult({
@@ -402,6 +515,7 @@ class App implements SettingsHost, SelectHost {
       wave: w.director.wave,
       bestCombo: w.score.bestCombo,
       unlocked: unlocked !== null ? (TEXTS.arenas[unlocked] ?? unlocked) : null,
+      unlockedWeapons,
     });
     this.results.show();
   }
@@ -454,6 +568,11 @@ class App implements SettingsHost, SelectHost {
     });
     document.addEventListener('pointerlockerror', () => this.onLockError());
 
+    // El audio solo se activa tras una interacción del jugador (requisito de los navegadores).
+    const unlockAudio = (): void => this.audio.unlock();
+    window.addEventListener('pointerdown', unlockAudio, true);
+    window.addEventListener('keydown', unlockAudio, true);
+
     window.addEventListener('keydown', (ev) => {
       if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
       if (this.state === 'playing') {
@@ -461,8 +580,17 @@ class App implements SettingsHost, SelectHost {
         if (action !== null && PREVENT_DEFAULT_CODES.has(ev.code)) ev.preventDefault();
         return;
       }
-      // Fuera del juego solo se atienden M (silencio) y P (continuar); el resto lo maneja la interfaz.
+      // Fuera del juego solo se atienden M (silencio), P (continuar) y 1-3 en las mejoras; el resto lo maneja la interfaz.
       if (ev.repeat) return;
+      if (this.state === 'perks') {
+        const choice =
+          ev.code === 'Digit1' ? 1 : ev.code === 'Digit2' ? 2 : ev.code === 'Digit3' ? 3 : 0;
+        if (choice > 0) {
+          ev.preventDefault();
+          this.choosePerk(choice);
+          return;
+        }
+      }
       if (ev.code === 'KeyM') this.toggleMute();
       else if (ev.code === 'KeyP' && this.state === 'paused' && !this.settingsScreen.visible) {
         this.resume();
@@ -501,6 +629,7 @@ class App implements SettingsHost, SelectHost {
         this.input.releaseAll();
         this.pauseGame();
       }
+      this.audio.setSuspended(document.hidden);
     });
 
     canvas.addEventListener('webglcontextlost', (ev) => {
@@ -515,6 +644,16 @@ class App implements SettingsHost, SelectHost {
       this.state = 'paused';
       this.click.showWith(TEXTS.errors.contextRestored);
     });
+  }
+
+  /** Sacudida leve para los golpes fuertes cercanos (el render la ignora con "Reducir movimiento"). */
+  private onShakeEvent(type: number, x: number, z: number): void {
+    const p = this.world.player;
+    const near = Math.hypot(x - p.pos.x, z - p.pos.z) < 5;
+    if (type === GameEvent.PlayerHit) this.camera.addShake(0.35);
+    else if (type === GameEvent.BossPhase) this.camera.addShake(0.4);
+    else if (type === GameEvent.AbilityOnda) this.camera.addShake(0.2);
+    else if (type === GameEvent.ZoneImpact && near) this.camera.addShake(0.3);
   }
 
   // ---------- Bucle ----------
@@ -536,28 +675,68 @@ class App implements SettingsHost, SelectHost {
     const s = this.save.settings;
     this.renderer.syncSize();
     let alpha = 1;
+    this.pollPad();
+    const pad = this.pad;
+    // Con el mando: Start continúa desde la pausa y la cruceta elige la mejora (sin pedir la captura del puntero).
+    if (this.state === 'paused' && pad.pause && !this.settingsScreen.visible) this.resume(false);
+    else if (this.state === 'perks' && pad.weapon > 0) this.choosePerk(pad.weapon, false);
 
     if (this.state === 'playing') {
-      // La cámara gira en cada frame de render, sin esperar al paso fijo.
+      // La cámara gira en cada frame de render, sin esperar al paso fijo (ratón, flechas y stick derecho).
       this.input.consumeLook(this.look);
       this.camera.applyLook(
         this.look.x,
         this.look.y,
-        this.input.turnAxisX(),
-        this.input.turnAxisY(),
+        clamp(this.input.turnAxisX() + pad.lookX * PAD.lookSpeed, -PAD.lookSpeed, PAD.lookSpeed),
+        clamp(this.input.turnAxisY() + pad.lookY * PAD.lookSpeed, -PAD.lookSpeed, PAD.lookSpeed),
         s.sensitivity,
         s.invertY,
         dt,
       );
-      if (this.input.consumePressed('shoulder')) this.camera.toggleShoulder();
+      // Apuntado asistido: corrección suave y limitada hacia el enemigo a tiro más alineado.
+      if (s.aimAssist) {
+        const d = world.diff;
+        this.camera.addYaw(
+          aimAssistDelta(world, this.camera.yaw, d.aimAssistCone, d.aimAssistRate, dt),
+        );
+      }
+      if (this.input.consumePressed('shoulder') || pad.shoulder) this.camera.toggleShoulder();
       if (this.input.consumePressed('mute')) this.toggleMute();
-      if (this.input.consumePressed('pause')) {
+      // Disparo automático: cada pulsación (ratón, Espacio o gatillo) lo enciende o lo apaga.
+      const padFirePressed = pad.fire && !this.padFireWas;
+      this.padFireWas = pad.fire;
+      if (s.autoFire) {
+        if (this.input.consumePressed('fire') || padFirePressed) this.setAutoFire(!this.autoFireOn);
+      } else {
+        this.input.consumePressed('fire');
+      }
+      if (this.input.consumePressed('pause') || pad.pause) {
         this.pauseGame();
       } else {
         const steps = this.timestep.advance(dt);
         for (let i = 0; i < steps; i++) {
           this.input.fillCommand(this.cmd, this.camera.yaw);
-          stepWorld(world, this.cmd);
+          const c = this.cmd;
+          // El mando se suma al teclado; sus pulsaciones van solo en el primer paso del frame.
+          if (pad.moveX !== 0 || pad.moveZ !== 0) {
+            c.moveX = pad.moveX;
+            c.moveZ = pad.moveZ;
+          }
+          c.fire = s.autoFire ? this.autoFireOn : c.fire || pad.fire;
+          c.aim = c.aim || pad.aim;
+          if (i === 0) {
+            c.dodge = c.dodge || pad.dodge;
+            c.vent = c.vent || pad.vent;
+            c.ability = c.ability || pad.ability;
+            if (pad.weapon > 0) c.weapon = pad.weapon;
+          }
+          c.perk = this.pendingPerk;
+          stepWorld(world, c);
+          if (world.director.phase !== DirectorPhase.PerkChoice) this.pendingPerk = 0;
+        }
+        // Oferta de mejoras: se detiene el juego y se muestra la elección.
+        if (world.director.phase === DirectorPhase.PerkChoice && this.pendingPerk === 0) {
+          this.showPerks();
         }
         alpha = this.timestep.alpha;
         if (world.defeated || world.victory) {
@@ -569,6 +748,10 @@ class App implements SettingsHost, SelectHost {
 
     world.events.drain((e) => {
       this.fx.handle(e, now);
+      this.abilityFx.handle(e, now);
+      this.bossView.handle(e, now);
+      this.audio.handle(e);
+      this.onShakeEvent(e.type, e.x, e.z);
       this.hud.onEvent(e);
       if (e.type === GameEvent.PlayerDefeated) this.playerMesh.setVisible(false);
       else if (e.type === GameEvent.HazardActivate) this.hazardsView.onActivate(e.a, now);
@@ -578,17 +761,32 @@ class App implements SettingsHost, SelectHost {
     const px = lerp(p.prev.x, p.pos.x, alpha);
     const pz = lerp(p.prev.z, p.pos.z, alpha);
     this.camera.update(world.arena, px, pz, p.aiming && this.state === 'playing', dt);
+    // Campo de visión: un poco más abierto al esquivar y más cerrado al apuntar, con transición suave.
+    const fovTarget = s.reduceMotion
+      ? 0
+      : p.dodgeTimer > 0
+        ? FOV_DODGE
+        : p.aiming && this.state === 'playing'
+          ? FOV_AIM
+          : 0;
+    this.fovOffset = damp(this.fovOffset, fovTarget, 10, dt);
+    this.renderer.setFov(Math.round((s.fov + this.fovOffset) * 100) / 100);
     const speed = Math.hypot(p.vel.x, p.vel.z);
-    const heatFrac = world.weapon.heat / world.tuning.weapon.maxHeat;
+    const wdef = activeWeaponDef(world);
+    const heatFrac = activeWeaponState(world).heat / wdef.maxHeat;
+    this.playerMesh.setWeapon(world.activeWeapon);
     this.playerMesh.update(px, pz, this.camera.yaw, speed, p.dodgeTimer > 0, heatFrac, dt);
     this.playerMesh.setCameraTooClose(this.camera.currentDistance < CAMERA_HIDE_PLAYER_DISTANCE);
-    this.reticle.update(world.arena, px, pz, this.camera.yaw, world.tuning.weapon.projectileRadius);
+    this.reticle.update(world.arena, px, pz, this.camera.yaw, wdef.projectileRadius);
     this.enemyMeshes.update(world, alpha, dt);
+    this.bossView.update(world, alpha, dt);
     this.projectileMeshes.update(world, alpha);
     this.pickupMeshes.update(world, dt);
     this.hazardsView.update(world.time, dt);
     const firing = this.state === 'playing' && this.cmd.fire;
     this.fx.update(dt, p, px, pz, firing);
+    this.abilityFx.update(world, px, pz, dt);
+    this.audio.update(world, px, pz, this.camera.yaw, this.state === 'playing', dt);
 
     this.renderer.render();
 

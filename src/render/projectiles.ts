@@ -17,6 +17,8 @@ import { Team } from '../game/projectiles';
 import type { World } from '../game/world';
 
 const SHOT_HEIGHT = 0.8;
+/** Radio del disparo del Pulsador: los perdigones (más finos) se dibujan más cortos y estrechos. */
+const BASE_RADIUS = 0.12;
 
 export class ProjectileMeshes {
   private readonly player: InstancedMesh;
@@ -53,6 +55,8 @@ export class ProjectileMeshes {
       if (!p.active) continue;
       d.position.set(lerp(p.prevX, p.x, alpha), SHOT_HEIGHT, lerp(p.prevZ, p.z, alpha));
       d.rotation.set(0, Math.atan2(-p.vx, -p.vz), 0);
+      const k = p.team === Team.Player ? p.radius / BASE_RADIUS : 1;
+      d.scale.set(k, k, k * k);
       d.updateMatrix();
       if (p.team === Team.Player) this.player.setMatrixAt(np++, d.matrix);
       else this.enemy.setMatrixAt(ne++, d.matrix);

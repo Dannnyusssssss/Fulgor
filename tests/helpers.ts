@@ -43,11 +43,13 @@ export function makeContext(
   const navLarge = new NavField(arena, BALANCE.nav.cellSize, BALANCE.nav.largeRadius);
   navSmall.recompute(px, pz);
   navLarge.recompute(px, pz);
+  const player = createPlayer(px, pz, 0, tuning.player);
   return {
     arena,
     navSmall,
     navLarge,
-    player: createPlayer(px, pz, 0, tuning.player),
+    player,
+    target: player,
     combat: new Rng(1),
     tuning,
     enemies,

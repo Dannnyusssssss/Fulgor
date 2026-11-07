@@ -22,7 +22,8 @@ const RECOVER_SECONDS = 0.4;
 
 export function updateVigia(e: Enemy, ctx: EnemyContext, dt: number): number {
   const def = ctx.tuning.vigia;
-  const p = ctx.player;
+  // Objetivo actual: el jugador o, si está activo, el señuelo.
+  const p = ctx.target;
   let flags = 0;
   beginStep(e, dt);
 

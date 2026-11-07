@@ -31,6 +31,8 @@ export function dashLength(def: ZumbadorDef): number {
 export function updateZumbador(e: Enemy, ctx: EnemyContext, dt: number): number {
   const def = ctx.tuning.zumbador;
   const player = ctx.player;
+  // Persigue y apunta al objetivo actual (jugador o señuelo); la embestida solo daña al jugador.
+  const target = ctx.target;
   let flags = 0;
   beginStep(e, dt);
 
@@ -40,7 +42,7 @@ export function updateZumbador(e: Enemy, ctx: EnemyContext, dt: number): number 
       break;
 
     case EnemyState.Chase: {
-      const d2 = distSq(e.pos.x, e.pos.z, player.pos.x, player.pos.z);
+      const d2 = distSq(e.pos.x, e.pos.z, target.pos.x, target.pos.z);
       const los = seesPlayer(e, ctx);
       // ¿Empezar el aviso de embestida?
       if (los && e.attackCooldown <= 0 && d2 <= def.chargeRange * def.chargeRange) {

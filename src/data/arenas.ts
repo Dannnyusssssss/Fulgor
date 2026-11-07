@@ -62,6 +62,8 @@ export interface ArenaDef {
   hazards: readonly HazardDef[];
   playerSpawn: { x: number; z: number; yaw: number };
   enemySpawns: readonly SpawnPoint[];
+  /** Dónde puede aparecer el Coloso (se elige el más lejano al jugador). Caben su radio y un margen. */
+  bossSpawns: readonly SpawnPoint[];
   /** Puntos donde aparecen objetos de vez en cuando. */
   pickupPoints: readonly SpawnPoint[];
   palette: ArenaPalette;
@@ -99,6 +101,10 @@ export const HANGAR_COBALTO: ArenaDef = {
     { x: 15, z: 15 },
     { x: -16, z: -4 },
     { x: 16, z: 4 },
+  ],
+  bossSpawns: [
+    { x: 0, z: -9 },
+    { x: 0, z: 9 },
   ],
   pickupPoints: [
     { x: 0, z: -4 },
@@ -160,6 +166,10 @@ export const FUNDICION_AMBAR: ArenaDef = {
     { x: -18.5, z: 0 },
     { x: 18.5, z: 0 },
   ],
+  bossSpawns: [
+    { x: -13, z: 0 },
+    { x: 13, z: 0 },
+  ],
   pickupPoints: [
     { x: -13, z: 0 },
     { x: 13, z: 0 },
@@ -220,6 +230,10 @@ export const JARDIN_CRISTAL: ArenaDef = {
     { x: 6, z: -15 },
     { x: -15, z: 15 },
     { x: 15, z: -15 },
+  ],
+  bossSpawns: [
+    { x: -9.5, z: 9 },
+    { x: 9.5, z: -9 },
   ],
   pickupPoints: [
     { x: -9, z: 0 },

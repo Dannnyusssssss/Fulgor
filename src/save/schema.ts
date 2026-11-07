@@ -2,18 +2,26 @@
  * Formato del guardado (clave única `fulgor:v1`) y su validación campo por campo.
  * Cualquier dato ausente, de otro tipo o fuera de rango se reemplaza por el valor por defecto.
  */
+import { isAbilityId, type AbilityId } from '../data/abilities';
 import { BALANCE, type Quality } from '../data/balance';
 import { isDifficulty, type Difficulty } from '../data/difficulty';
 import { META } from '../data/meta';
+import { isWeaponId, WEAPON_ORDER, WEAPON_UNLOCKS, type WeaponId } from '../data/weapons';
 
 export interface Settings {
   muted: boolean;
+  /** Volumen general y de la música (0–1). */
+  volume: number;
+  musicVolume: number;
   reduceFlashes: boolean;
   reduceMotion: boolean;
   sensitivity: number;
   invertY: boolean;
   fov: number;
   quality: Quality;
+  /** Asistencias: apuntado asistido y disparo automático (alternar con una pulsación). */
+  aimAssist: boolean;
+  autoFire: boolean;
 }
 
 export interface SaveData {
@@ -26,6 +34,10 @@ export interface SaveData {
     /** Última arena y dificultad elegidas (para la pantalla de selección). */
     lastArena: string;
     lastDifficulty: Difficulty;
+    /** Armas desbloqueadas (el Pulsador siempre). */
+    unlockedWeapons: WeaponId[];
+    /** Última habilidad elegida. */
+    lastAbility: AbilityId;
   };
   /** Mejores puntuaciones por `arena:dificultad`. */
   best: Record<string, number>;
@@ -51,12 +63,16 @@ export function resultKey(arena: string, difficulty: Difficulty): string {
 export function defaultSettings(prefersReducedMotion: boolean): Settings {
   return {
     muted: false,
+    volume: 0.6,
+    musicVolume: 0.6,
     reduceFlashes: prefersReducedMotion,
     reduceMotion: prefersReducedMotion,
     sensitivity: BALANCE.camera.sensitivityDefault,
     invertY: false,
     fov: BALANCE.camera.fovDefault,
     quality: 'medium',
+    aimAssist: false,
+    autoFire: false,
   };
 }
 
@@ -69,6 +85,8 @@ export function defaultSave(prefersReducedMotion: boolean): SaveData {
       completed: [],
       lastArena: FIRST_ARENA,
       lastDifficulty: 'normal',
+      unlockedWeapons: ['pulsador'],
+      lastAbility: 'onda',
     },
     best: {},
     lastSeed: null,
@@ -102,12 +120,16 @@ export function parseSettings(raw: unknown, prefersReducedMotion: boolean): Sett
   const q = raw['quality'];
   return {
     muted: bool(raw['muted'], d.muted),
+    volume: num(raw['volume'], 0, 1, d.volume),
+    musicVolume: num(raw['musicVolume'], 0, 1, d.musicVolume),
     reduceFlashes: bool(raw['reduceFlashes'], d.reduceFlashes),
     reduceMotion: bool(raw['reduceMotion'], d.reduceMotion),
     sensitivity: num(raw['sensitivity'], cam.sensitivityMin, cam.sensitivityMax, d.sensitivity),
     invertY: bool(raw['invertY'], d.invertY),
     fov: num(raw['fov'], cam.fovMin, cam.fovMax, d.fov),
     quality: q === 'low' || q === 'medium' || q === 'high' ? q : d.quality,
+    aimAssist: bool(raw['aimAssist'], d.aimAssist),
+    autoFire: bool(raw['autoFire'], d.autoFire),
   };
 }
 
@@ -127,6 +149,8 @@ export function parseSave(text: string | null, prefersReducedMotion: boolean): S
   const completed: string[] = [];
   let lastArena = d.progress.lastArena;
   let lastDifficulty = d.progress.lastDifficulty;
+  const weapons: WeaponId[] = [...d.progress.unlockedWeapons];
+  let lastAbility = d.progress.lastAbility;
   const progress = raw['progress'];
   if (isRecord(progress)) {
     if (Array.isArray(progress['unlockedArenas'])) {
@@ -141,7 +165,22 @@ export function parseSave(text: string | null, prefersReducedMotion: boolean): S
     }
     if (isId(progress['lastArena'])) lastArena = progress['lastArena'];
     if (isDifficulty(progress['lastDifficulty'])) lastDifficulty = progress['lastDifficulty'];
+    // Guardados anteriores no tienen estos campos: se quedan los valores por defecto.
+    if (Array.isArray(progress['unlockedWeapons'])) {
+      for (const id of progress['unlockedWeapons'].slice(0, WEAPON_ORDER.length * 2)) {
+        if (isWeaponId(id) && !weapons.includes(id)) weapons.push(id);
+      }
+    }
+    if (isAbilityId(progress['lastAbility'])) lastAbility = progress['lastAbility'];
   }
+  // Compatibilidad: una arena ya completada (guardados del Hito 2) concede las armas que dependen de ella.
+  for (const id of WEAPON_ORDER) {
+    const rule = WEAPON_UNLOCKS[id];
+    if (rule.kind === 'start' || weapons.includes(id)) continue;
+    if (completed.some((k) => k.startsWith(`${rule.arena}:`))) weapons.push(id);
+  }
+  // Orden estable de las ranuras.
+  weapons.sort((a, b) => WEAPON_ORDER.indexOf(a) - WEAPON_ORDER.indexOf(b));
 
   // Marcas: `arena:dificultad`. Las del Hito 1 (solo `arena`) se migran a Normal.
   const best: Record<string, number> = {};
@@ -168,7 +207,14 @@ export function parseSave(text: string | null, prefersReducedMotion: boolean): S
   return {
     version: META.saveVersion,
     settings: parseSettings(raw['settings'], prefersReducedMotion),
-    progress: { unlockedArenas: unlocked, completed, lastArena, lastDifficulty },
+    progress: {
+      unlockedArenas: unlocked,
+      completed,
+      lastArena,
+      lastDifficulty,
+      unlockedWeapons: weapons,
+      lastAbility,
+    },
     best,
     lastSeed,
   };

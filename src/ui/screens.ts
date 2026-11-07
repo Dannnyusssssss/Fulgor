@@ -2,6 +2,7 @@
  * Pantallas en DOM: inicio (instrucciones y aviso), selección de arena, ajustes, pausa, resultados, avisos y errores.
  * Todo se maneja con teclado (botones nativos) y sin depender de hover.
  */
+import { ABILITY_ORDER, type AbilityId } from '../data/abilities';
 import { BALANCE, type Quality } from '../data/balance';
 import { DIFFICULTY_ORDER, type Difficulty } from '../data/difficulty';
 import { META } from '../data/meta';
@@ -121,6 +122,24 @@ export class SettingsScreen extends Panel {
         t.on,
         t.off,
       ),
+      slider(
+        t.volume,
+        0,
+        1,
+        0.05,
+        () => h.get().volume,
+        (v) => h.update({ volume: v }),
+        (v) => `${Math.round(v * 100)} %`,
+      ),
+      slider(
+        t.musicVolume,
+        0,
+        1,
+        0.05,
+        () => h.get().musicVolume,
+        (v) => h.update({ musicVolume: v }),
+        (v) => `${Math.round(v * 100)} %`,
+      ),
       ...comfortToggles(h),
       slider(
         t.sensitivity,
@@ -148,6 +167,20 @@ export class SettingsScreen extends Panel {
         (v) => `${Math.round(v)}°`,
       ),
       this.qualityRow(),
+      toggle(
+        t.aimAssist,
+        () => h.get().aimAssist,
+        (v) => h.update({ aimAssist: v }),
+        t.on,
+        t.off,
+      ),
+      toggle(
+        t.autoFire,
+        () => h.get().autoFire,
+        (v) => h.update({ autoFire: v }),
+        t.on,
+        t.off,
+      ),
       button(t.back, this.onBack, 'btn btn-primary'),
     );
     super.show();
@@ -221,12 +254,16 @@ export interface SelectHost {
   best(arena: string, difficulty: Difficulty): number;
   selection(): { arena: string; difficulty: Difficulty };
   select(arena: string, difficulty: Difficulty): void;
+  ability(): AbilityId;
+  selectAbility(id: AbilityId): void;
 }
 
 /** Selección de arena y dificultad, toda con botones (teclado y ratón). */
 export class SelectScreen extends Panel {
   private readonly list = el('div', 'arena-list');
   private readonly difficulties = el('div', 'segmented');
+  private readonly abilities = el('div', 'segmented');
+  private readonly abilityDesc = el('p', 'hint ability-desc', '');
   constructor(
     parent: HTMLElement,
     private readonly host: SelectHost,
@@ -245,7 +282,11 @@ export class SelectScreen extends Panel {
       button(TEXTS.select.start, onStart, 'btn btn-primary'),
       button(TEXTS.select.back, onBack),
     );
-    card.append(diffRow, actions);
+    const abilityRow = el('div', 'setting-row');
+    abilityRow.append(el('span', 'setting-label', TEXTS.select.ability), this.abilities);
+    this.abilities.setAttribute('role', 'group');
+    this.abilities.setAttribute('aria-label', TEXTS.select.ability);
+    card.append(diffRow, abilityRow, this.abilityDesc, actions);
     this.root.append(card);
     this.root.addEventListener('keydown', (ev) => {
       if (ev.code === 'Escape') {
@@ -308,6 +349,24 @@ export class SelectScreen extends Panel {
       diffButtons.push(b);
     }
     this.difficulties.replaceChildren(...diffButtons);
+
+    // Habilidad de la partida: una de tres, con su descripción debajo.
+    const current = this.host.ability();
+    const abilityButtons = ABILITY_ORDER.map((id, i) => {
+      const b = button(
+        TEXTS.abilities[id],
+        () => {
+          this.host.selectAbility(id);
+          this.refresh();
+          this.abilities.querySelectorAll('button')[i]?.focus();
+        },
+        'btn btn-seg',
+      );
+      b.setAttribute('aria-pressed', id === current ? 'true' : 'false');
+      return b;
+    });
+    this.abilities.replaceChildren(...abilityButtons);
+    setText(this.abilityDesc, TEXTS.abilityDescriptions[current]);
   }
 
   private focusArena(i: number): void {
@@ -324,6 +383,8 @@ export interface ResultInfo {
   bestCombo: number;
   /** Nombre de la arena desbloqueada, o null. */
   unlocked: string | null;
+  /** Nombres de las armas desbloqueadas en esta partida. */
+  unlockedWeapons: readonly string[];
 }
 
 /** Resultados de la partida (victoria o derrota). Solo ofrece acciones internas. */
@@ -332,6 +393,7 @@ export class ResultsScreen extends Panel {
   private readonly record = el('p', 'result result-record', TEXTS.results.newRecord);
   private readonly lines = el('div', 'results-lines');
   private readonly unlocked = el('p', 'result result-unlocked', '');
+  private readonly unlockedWeapon = el('p', 'result result-unlocked', '');
   constructor(parent: HTMLElement, onRetry: () => void, onChoose: () => void, onQuit: () => void) {
     super(parent, 'screen-results');
     const card = el('div', 'panel panel-narrow');
@@ -341,7 +403,7 @@ export class ResultsScreen extends Panel {
       button(TEXTS.results.chooseArena, onChoose),
       button(TEXTS.results.quit, onQuit),
     );
-    card.append(this.title, this.record, this.lines, this.unlocked, actions);
+    card.append(this.title, this.record, this.lines, this.unlocked, this.unlockedWeapon, actions);
     this.root.append(card);
   }
 
@@ -356,6 +418,62 @@ export class ResultsScreen extends Panel {
     );
     setVisible(this.unlocked, r.unlocked !== null);
     setText(this.unlocked, r.unlocked !== null ? `${TEXTS.results.unlocked} ${r.unlocked}` : '');
+    const weapons = r.unlockedWeapons.join(', ');
+    setVisible(this.unlockedWeapon, weapons.length > 0);
+    setText(
+      this.unlockedWeapon,
+      weapons.length > 0 ? `${TEXTS.results.unlockedWeapon} ${weapons}` : '',
+    );
+  }
+}
+
+/** Una opción de la pantalla de mejoras, ya traducida. */
+export interface PerkOption {
+  name: string;
+  description: string;
+  /** Nivel actual y máximo (antes de elegirla). */
+  level: number;
+  maxLevel: number;
+}
+
+/**
+ * Elección de mejora entre oleadas: 3 tarjetas que se eligen con 1, 2 o 3, con Enter sobre la tarjeta enfocada
+ * o con un clic (el clic es un gesto del jugador y permite volver a capturar el puntero).
+ */
+export class PerkScreen extends Panel {
+  private readonly cards = el('div', 'perk-cards');
+  constructor(
+    parent: HTMLElement,
+    private readonly onChoose: (choice: number) => void,
+  ) {
+    super(parent, 'screen-perks');
+    const card = el('div', 'panel');
+    card.append(
+      el('h1', 'title-small', TEXTS.perkScreen.title),
+      el('p', 'hint', TEXTS.perkScreen.hint),
+      this.cards,
+    );
+    this.root.append(card);
+  }
+
+  showOptions(options: readonly PerkOption[]): void {
+    const items = options.map((o, i) => {
+      const b = el('button', 'btn perk-card');
+      b.type = 'button';
+      b.append(
+        el('span', 'perk-key', String(i + 1)),
+        el('span', 'perk-name', o.name),
+        el('span', 'perk-desc', o.description),
+        el('span', 'perk-level', `${TEXTS.perkScreen.level} ${o.level + 1}/${o.maxLevel}`),
+      );
+      b.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        this.onChoose(i + 1);
+      });
+      return b;
+    });
+    this.cards.replaceChildren(...items);
+    this.show();
   }
 }
 

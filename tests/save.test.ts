@@ -32,6 +32,8 @@ describe('guardado', () => {
     s.settings.muted = true;
     s.best['hangar-cobalto:hard'] = 1200;
     s.progress.completed.push('hangar-cobalto:easy');
+    s.progress.unlockedWeapons.push('dispersor', 'rayo');
+    s.progress.lastAbility = 'barrera';
     s.progress.lastArena = 'fundicion-ambar';
     s.progress.lastDifficulty = 'hard';
     s.lastSeed = 123456;
@@ -151,6 +153,7 @@ describe('progreso', () => {
       newRecord: true,
       best: 500,
       unlocked: null,
+      unlockedWeapons: [],
     });
     expect(recordRun(s, 'hangar-cobalto', 'normal', 300, false).newRecord).toBe(false);
     expect(bestFor(s, 'hangar-cobalto', 'normal')).toBe(500);
@@ -169,5 +172,40 @@ describe('progreso', () => {
     expect(s.progress.completed).toContain('hangar-cobalto:easy');
     // El progreso sobrevive a guardar y cargar.
     expect(parseSave(serializeSave(s), false)).toEqual(s);
+  });
+
+  it('desbloquea el Dispersor al llegar a la oleada 5 de Hangar y el Rayo al completarlo', () => {
+    const s = defaultSave(false);
+    expect(s.progress.unlockedWeapons).toEqual(['pulsador']);
+    expect(recordRun(s, 'fundicion-ambar', 'normal', 0, false, 9).unlockedWeapons).toEqual([]);
+    expect(recordRun(s, 'hangar-cobalto', 'normal', 0, false, 4).unlockedWeapons).toEqual([]);
+    expect(recordRun(s, 'hangar-cobalto', 'hard', 0, false, 5).unlockedWeapons).toEqual([
+      'dispersor',
+    ]);
+    expect(recordRun(s, 'hangar-cobalto', 'easy', 0, true, 10).unlockedWeapons).toEqual(['rayo']);
+    expect(recordRun(s, 'hangar-cobalto', 'easy', 0, true, 10).unlockedWeapons).toEqual([]);
+    expect(s.progress.unlockedWeapons).toEqual(['pulsador', 'dispersor', 'rayo']);
+    expect(parseSave(serializeSave(s), false)).toEqual(s);
+  });
+
+  it('armas y habilidad: valida el guardado y concede las armas de las arenas ya completadas', () => {
+    const bad = parseSave(
+      JSON.stringify({
+        progress: { unlockedWeapons: ['rayo', 'bazuca', 7, 'rayo'], lastAbility: 'volar' },
+      }),
+      false,
+    );
+    expect(bad.progress.unlockedWeapons).toEqual(['pulsador', 'rayo']);
+    expect(bad.progress.lastAbility).toBe('onda');
+    // Guardado del Hito 2 con Hangar completado: recibe el Dispersor y el Rayo.
+    const old = parseSave(
+      JSON.stringify({ version: 1, progress: { completed: ['hangar-cobalto:normal'] } }),
+      false,
+    );
+    expect(old.progress.unlockedWeapons).toEqual(['pulsador', 'dispersor', 'rayo']);
+    expect(
+      parseSave(JSON.stringify({ progress: { lastAbility: 'senuelo' } }), false).progress
+        .lastAbility,
+    ).toBe('senuelo');
   });
 });

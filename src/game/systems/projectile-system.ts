@@ -7,12 +7,12 @@ import { sweepObstacles } from '../collision';
 import { inFrontArc } from '../enemies/blindado';
 import { EnemyKind, isDamageable, type Enemy } from '../enemies/types';
 import { GameEvent } from '../events';
-import { Team } from '../projectiles';
+import { projectileDamage, Team } from '../projectiles';
 import type { World } from '../world';
 import { damageEnemy, hurtPlayer } from './damage';
 
 /** Radio máximo de un enemigo, para la fase amplia de la consulta al hash. */
-const MAX_ENEMY_RADIUS = 1.5;
+export const MAX_ENEMY_RADIUS = 2;
 
 export function updateProjectileSystem(world: World, dt: number): void {
   const items = world.enemies.items;
@@ -76,7 +76,7 @@ export function updateProjectileSystem(world: World, dt: number): void {
         hitEnemy.sinceBlocked = 0;
         world.events.emit(GameEvent.ProjectileBlocked, p.x, p.z, hitEnemy.index);
       } else {
-        damageEnemy(world, hitEnemy, p.damage);
+        damageEnemy(world, hitEnemy, projectileDamage(p));
         world.events.emit(GameEvent.ProjectileHitEnemy, p.x, p.z, hitEnemy.index);
       }
     } else if (hitPlayer) {

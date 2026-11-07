@@ -14,8 +14,10 @@ export const TEXTS = {
       'Clic derecho: apuntar con precisión',
       'Shift: esquivar',
       'R: ventilar el arma',
+      'Q: habilidad · 1, 2, 3: cambiar de arma',
       'C: cambiar de hombro',
       'Esc o P: pausa · M: silencio',
+      'Mando: sticks para moverse y apuntar, RT dispara, A esquiva, X ventila, Y habilidad, cruceta cambia de arma, Start pausa',
     ],
     noticeTitle: 'Aviso',
     notice:
@@ -29,6 +31,7 @@ export const TEXTS = {
     locked: 'Bloqueada: completa',
     best: 'Mejor marca',
     completed: 'Completada',
+    ability: 'Habilidad',
   },
   difficulties: {
     easy: 'Fácil',
@@ -43,11 +46,14 @@ export const TEXTS = {
     wave: 'Oleada alcanzada',
     bestCombo: 'Mejor combo',
     unlocked: 'Nueva arena desbloqueada:',
+    unlockedWeapon: 'Nueva arma desbloqueada:',
     retry: 'Reintentar',
     chooseArena: 'Elegir arena',
     quit: 'Volver al inicio',
   },
   clickToPlay: 'Haz clic para jugar',
+  gamepadConnected: 'Mando conectado.',
+  gamepadDisconnected: 'Mando desconectado.',
   clickToContinue: 'Haz clic para continuar',
   pointerLockUnavailable:
     'No se pudo capturar el puntero. Usa las flechas para girar o haz clic en el juego para intentarlo de nuevo.',
@@ -68,6 +74,8 @@ export const TEXTS = {
     title: 'Ajustes',
     back: 'Volver',
     muted: 'Silenciar sonido',
+    volume: 'Volumen general',
+    musicVolume: 'Volumen de la música',
     reduceFlashes: 'Reducir destellos',
     reduceMotion: 'Reducir movimiento',
     sensitivity: 'Sensibilidad del ratón',
@@ -80,6 +88,8 @@ export const TEXTS = {
     on: 'Sí',
     off: 'No',
     saveFailed: 'No se pudieron guardar los ajustes en este navegador.',
+    aimAssist: 'Apuntado asistido',
+    autoFire: 'Disparo automático (una pulsación lo activa o lo detiene)',
   },
   hud: {
     health: 'Vida',
@@ -99,6 +109,117 @@ export const TEXTS = {
     combo: 'Combo ×',
     waveCleared: 'Oleada superada',
     cleanBonus: 'Oleada limpia +',
+    abilityReady: 'lista',
+    autoFireOn: 'Disparo automático: activo',
+    boss: 'Coloso',
+    bossPhase: 'Fase',
+    bossIncoming: '¡Llega el Coloso!',
+    bossPhaseBanner: 'El Coloso cambia de fase',
+    barrier: 'Barrera',
+    locked: 'bloqueada',
+  },
+  weapons: {
+    pulsador: 'Pulsador',
+    dispersor: 'Dispersor',
+    rayo: 'Rayo',
+  },
+  weaponUnlockHints: {
+    pulsador: '',
+    dispersor: 'Llega a la oleada 5 de Hangar Cobalto',
+    rayo: 'Completa Hangar Cobalto',
+  },
+  abilities: {
+    onda: 'Onda',
+    barrera: 'Barrera',
+    senuelo: 'Señuelo',
+  },
+  perkScreen: {
+    title: 'Elige una mejora',
+    hint: 'Pulsa 1, 2 o 3, o haz clic en una mejora.',
+    level: 'Nivel',
+  },
+  perks: {
+    'nucleo-afilado': { name: 'Núcleo afilado', description: '+12 % de daño con todas las armas.' },
+    'gatillo-agil': { name: 'Gatillo ágil', description: '+10 % de cadencia de disparo.' },
+    disipador: { name: 'Disipador', description: 'Las armas se enfrían un 20 % más rápido.' },
+    'condensador-frio': {
+      name: 'Condensador frío',
+      description: 'Cada disparo calienta un 10 % menos.',
+    },
+    'purga-rapida': {
+      name: 'Purga rápida',
+      description: 'La recarga del ventilado es un 20 % más corta.',
+    },
+    'reinicio-expres': {
+      name: 'Reinicio exprés',
+      description: 'El bloqueo por sobrecalentamiento dura un 25 % menos.',
+    },
+    'escudo-ampliado': { name: 'Escudo ampliado', description: '+15 de escudo máximo.' },
+    'regeneracion-temprana': {
+      name: 'Regeneración temprana',
+      description: 'El escudo empieza a recuperarse antes.',
+    },
+    'recarga-escudo': {
+      name: 'Recarga de escudo',
+      description: 'El escudo se recupera un 30 % más rápido.',
+    },
+    'chasis-reforzado': {
+      name: 'Chasis reforzado',
+      description: '+15 de vida máxima (y la recupera).',
+    },
+    placas: {
+      name: 'Placas',
+      description: 'Recibes un 8 % menos de daño. Incompatible con Cañón de cristal.',
+    },
+    'canon-cristal': {
+      name: 'Cañón de cristal',
+      description: '+30 % de daño, pero recibes un 15 % más. Incompatible con Placas.',
+    },
+    servos: { name: 'Servos', description: 'Te mueves un 8 % más rápido.' },
+    'esquiva-ligera': {
+      name: 'Esquiva ligera',
+      description: 'La recarga de la esquiva es un 15 % más corta.',
+    },
+    'fase-extendida': {
+      name: 'Fase extendida',
+      description: 'La invulnerabilidad de la esquiva dura un poco más.',
+    },
+    reciclaje: {
+      name: 'Reciclaje',
+      description: 'Recuperas 2 de vida por cada máquina desactivada.',
+    },
+    iman: { name: 'Imán', description: 'Recoges los objetos desde más lejos.' },
+    botiquin: {
+      name: 'Botiquín eficiente',
+      description: 'Los objetos de vida y escudo dan un 25 % más.',
+    },
+    'habilidad-rapida': {
+      name: 'Habilidad rápida',
+      description: 'La habilidad se recarga un 15 % antes.',
+    },
+    amplificador: {
+      name: 'Amplificador',
+      description:
+        'Habilidad más potente: Onda más amplia, Barrera más fuerte o Señuelo más largo.',
+    },
+    'proyectil-veloz': {
+      name: 'Proyectil veloz',
+      description: 'Disparos más rápidos y con más alcance.',
+    },
+    'perdigones-extra': {
+      name: 'Perdigones extra',
+      description: 'El Dispersor dispara 2 perdigones más.',
+    },
+    'rayo-concentrado': { name: 'Rayo concentrado', description: '+3 m de alcance del Rayo.' },
+    'esquiva-fria': {
+      name: 'Esquiva fría',
+      description: 'Cada esquiva quita calor a todas las armas.',
+    },
+  } as Record<string, { name: string; description: string }>,
+  abilityDescriptions: {
+    onda: 'Empuja a las máquinas cercanas e interrumpe sus ataques.',
+    barrera: 'Escudo temporal que absorbe daño.',
+    senuelo: 'Holograma que atrae a las máquinas unos segundos.',
   },
   errors: {
     noWebgl:

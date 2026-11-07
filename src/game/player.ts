@@ -27,6 +27,10 @@ export interface PlayerState {
   dodgeDir: Vec2;
   aiming: boolean;
   alive: boolean;
+  /** Barrera (habilidad): daño que aún puede absorber, su valor inicial y el tiempo que le queda. */
+  barrier: number;
+  barrierMax: number;
+  barrierTimer: number;
 }
 
 export function createPlayer(x: number, z: number, yaw: number, tune: PlayerTuning): PlayerState {
@@ -47,6 +51,9 @@ export function createPlayer(x: number, z: number, yaw: number, tune: PlayerTuni
     dodgeDir: vec2(0, -1),
     aiming: false,
     alive: true,
+    barrier: 0,
+    barrierMax: 0,
+    barrierTimer: 0,
   };
 }
 
@@ -120,14 +127,21 @@ function clampAxis(v: number): number {
 }
 
 /**
- * Aplica daño al jugador: primero el escudo, luego la vida. Durante la invulnerabilidad de la esquiva no hace nada.
+ * Aplica daño al jugador: primero la barrera (si hay), luego el escudo y por último la vida. Durante la invulnerabilidad de la esquiva no hace nada.
  * Devuelve el daño aplicado realmente.
  */
 export function damagePlayer(p: PlayerState, amount: number, god: boolean): number {
   if (!p.alive || amount <= 0 || !Number.isFinite(amount)) return 0;
   if (god || p.invulnTimer > 0) return 0;
-  p.sinceDamage = 0;
   let rest = amount;
+  if (p.barrier > 0) {
+    const byBarrier = Math.min(p.barrier, rest);
+    p.barrier -= byBarrier;
+    rest -= byBarrier;
+    // La barrera absorbe el golpe entero: el escudo no deja de regenerarse por ello.
+    if (rest <= 0) return amount;
+  }
+  p.sinceDamage = 0;
   const absorbed = Math.min(p.shield, rest);
   p.shield -= absorbed;
   rest -= absorbed;

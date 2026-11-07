@@ -60,7 +60,8 @@ interface KindStyle {
   accentY: number;
 }
 
-const STYLES: Record<EnemyKindId, KindStyle> = {
+/** Estilos de los enemigos normales (el Coloso tiene su propia vista, BossView). */
+const STYLES: Record<Exclude<EnemyKindId, 6>, KindStyle> = {
   1: {
     body: new Color(0.5, 0.52, 0.68),
     accent: new Color(0xff3d8b),
@@ -313,7 +314,7 @@ export class EnemyMeshes {
     const d = this.dummy;
     const items = world.enemies.items;
     for (const e of items) {
-      if (!e.active) continue;
+      if (!e.active || e.kind === EnemyKind.Coloso) continue;
       const x = lerp(e.prev.x, e.pos.x, alpha);
       const z = lerp(e.prev.z, e.pos.z, alpha);
       const style = STYLES[e.kind];

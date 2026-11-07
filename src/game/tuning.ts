@@ -5,17 +5,20 @@
 import { BALANCE } from '../data/balance';
 import {
   BLINDADO,
+  COLOSO,
   CENTINELA,
   REPARADOR,
   VIGIA,
   ZUMBADOR,
   type BlindadoDef,
   type CentinelaDef,
+  type ColosoDef,
   type ReparadorDef,
   type VigiaDef,
   type ZumbadorDef,
 } from '../data/enemies';
-import { PULSADOR, type WeaponDef } from '../data/weapons';
+import { ABILITIES, type BarreraDef, type OndaDef, type SenueloDef } from '../data/abilities';
+import { DISPERSOR, PULSADOR, RAYO, type WeaponDef, type WeaponId } from '../data/weapons';
 
 /** Convierte tipos literales y de solo lectura en tipos editables. */
 type Widen<T> = T extends number
@@ -30,12 +33,14 @@ export type PlayerTuning = Widen<typeof BALANCE.player>;
 
 export interface Tuning {
   player: PlayerTuning;
-  weapon: WeaponDef;
+  weapons: Record<WeaponId, WeaponDef>;
+  abilities: { onda: OndaDef; barrera: BarreraDef; senuelo: SenueloDef };
   zumbador: ZumbadorDef;
   centinela: CentinelaDef;
   blindado: BlindadoDef;
   reparador: ReparadorDef;
   vigia: VigiaDef;
+  coloso: ColosoDef;
 }
 
 export function createTuning(): Tuning {
@@ -43,12 +48,14 @@ export function createTuning(): Tuning {
   return JSON.parse(
     JSON.stringify({
       player: BALANCE.player,
-      weapon: PULSADOR,
+      weapons: { pulsador: PULSADOR, dispersor: DISPERSOR, rayo: RAYO },
+      abilities: ABILITIES,
       zumbador: ZUMBADOR,
       centinela: CENTINELA,
       blindado: BLINDADO,
       reparador: REPARADOR,
       vigia: VIGIA,
+      coloso: COLOSO,
     }),
   ) as Tuning;
 }

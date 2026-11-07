@@ -27,7 +27,8 @@ export function inFrontArc(e: Enemy, x: number, z: number, halfAngle: number): b
 
 export function updateBlindado(e: Enemy, ctx: EnemyContext, dt: number): number {
   const def = ctx.tuning.blindado;
-  const p = ctx.player;
+  // Objetivo actual: el jugador o, si está activo, el señuelo.
+  const p = ctx.target;
   let flags = 0;
   beginStep(e, dt);
 
