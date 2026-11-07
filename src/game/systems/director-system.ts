@@ -10,7 +10,7 @@ import { GameEvent } from '../events';
 import { EnemyKind, type EnemyKindId } from '../enemies/types';
 import { makeOffer } from '../perks';
 import { onWaveCleared, onWaveStart } from '../score';
-import type { World } from '../world';
+import { isBossWave, isLastWave, waveDefAt, type World } from '../world';
 import { spawnEnemy } from './spawn';
 
 export function updateDirectorSystem(world: World, dt: number): void {
@@ -37,7 +37,7 @@ export function updateDirectorSystem(world: World, dt: number): void {
       if (world.enemies.activeCount === 0) {
         const bonus = onWaveCleared(world.score, d.wave, world.diff.scoreMultiplier);
         world.events.emit(GameEvent.WaveCleared, 0, 0, d.wave, bonus);
-        if (d.wave >= world.waves.length) {
+        if (isLastWave(world, d.wave)) {
           d.phase = DirectorPhase.Victory;
           world.victory = true;
           world.events.emit(GameEvent.Victory, world.player.pos.x, world.player.pos.z);
@@ -65,7 +65,7 @@ export function updateDirectorSystem(world: World, dt: number): void {
 
 function startNextWave(world: World): void {
   const d = world.director;
-  const def = world.waves[d.wave];
+  const def = waveDefAt(world, d.wave + 1);
   if (def === undefined) {
     d.phase = DirectorPhase.Victory;
     world.victory = true;
@@ -83,7 +83,15 @@ function startNextWave(world: World): void {
   d.phase = DirectorPhase.Spawning;
   d.timer = 0;
   onWaveStart(world.score);
-  world.events.emit(GameEvent.WaveStart, 0, 0, d.wave, d.queueLength);
+  // c = 1 si es la oleada del jefe (para el aviso del HUD).
+  world.events.emit(
+    GameEvent.WaveStart,
+    0,
+    0,
+    d.wave,
+    d.queueLength,
+    isBossWave(world, d.wave) ? 1 : 0,
+  );
 }
 
 /** El Coloso aparece en el punto de jefe de la arena más lejano al jugador. */

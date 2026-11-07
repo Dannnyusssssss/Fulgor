@@ -17,6 +17,55 @@ export interface RunResult {
   unlockedWeapons: WeaponId[];
 }
 
+/** Resistencia se abre en una arena al completarla en el modo Oleadas (en cualquier dificultad). */
+export function isEndlessUnlocked(save: SaveData, arena: string): boolean {
+  return save.progress.completed.some((k) => k.startsWith(`${arena}:`));
+}
+
+export function bestEndlessFor(
+  save: SaveData,
+  arena: string,
+  difficulty: Difficulty,
+): { points: number; wave: number } {
+  const key = resultKey(arena, difficulty);
+  return { points: save.bestEndless[key] ?? 0, wave: save.bestEndlessWave[key] ?? 0 };
+}
+
+export interface EndlessResult {
+  newRecord: boolean;
+  best: number;
+  bestWave: number;
+  unlockedWeapons: WeaponId[];
+}
+
+/**
+ * Registra una partida de Resistencia (modifica `save`): mejor puntuación y mejor oleada, por separado.
+ * No completa arenas ni desbloquea arenas; sí puede desbloquear armas que dependan de la oleada alcanzada.
+ */
+export function recordEndlessRun(
+  save: SaveData,
+  arena: string,
+  difficulty: Difficulty,
+  points: number,
+  waveReached: number,
+): EndlessResult {
+  const key = resultKey(arena, difficulty);
+  const prev = save.bestEndless[key] ?? 0;
+  const prevWave = save.bestEndlessWave[key] ?? 0;
+  const score = Math.max(0, Math.floor(points));
+  const wave = Math.max(0, Math.floor(waveReached));
+  const newRecord = score > prev;
+  if (newRecord) save.bestEndless[key] = score;
+  if (wave > prevWave) save.bestEndlessWave[key] = wave;
+  const unlockedWeapons = unlockWeapons(save, arena, wave, false);
+  return {
+    newRecord,
+    best: Math.max(prev, score),
+    bestWave: Math.max(prevWave, wave),
+    unlockedWeapons,
+  };
+}
+
 export function bestFor(save: SaveData, arena: string, difficulty: Difficulty): number {
   return save.best[resultKey(arena, difficulty)] ?? 0;
 }

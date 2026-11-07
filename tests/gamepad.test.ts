@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  connectionChange,
   createPadState,
   curve,
   PAD,
   PadMapper,
+  pauseOnDisconnect,
   radialDeadzone,
   type PadSnapshot,
 } from '../src/core/gamepad';
@@ -171,5 +173,36 @@ describe('ajustes de asistencias y volumen', () => {
     expect(bad.settings.autoFire).toBe(false);
     expect(bad.settings.volume).toBe(0.6);
     expect(bad.settings.musicVolume).toBe(0.6);
+  });
+});
+
+describe('mando conectado o desconectado en mitad de partida', () => {
+  it('detecta el cambio de conexión entre dos lecturas', () => {
+    expect(connectionChange(false, true)).toBe(1);
+    expect(connectionChange(true, false)).toBe(-1);
+    expect(connectionChange(true, true)).toBe(0);
+    expect(connectionChange(false, false)).toBe(0);
+  });
+
+  it('pausa solo si se desconecta mientras se juega', () => {
+    expect(pauseOnDisconnect(-1, true)).toBe(true);
+    expect(pauseOnDisconnect(-1, false)).toBe(false);
+    // Conectar un mando no interrumpe la partida.
+    expect(pauseOnDisconnect(1, true)).toBe(false);
+    expect(pauseOnDisconnect(0, true)).toBe(false);
+  });
+
+  it('al desconectarse, el mapeo deja todo a cero (no queda un disparo o un movimiento pegado)', () => {
+    const m = new PadMapper();
+    const out = createPadState();
+    const axes = [1, 0, 0, 0];
+    const buttons = new Array<number>(17).fill(0);
+    buttons[PAD.buttons.rt] = 1;
+    const snap: PadSnapshot = { axes, buttons };
+    m.update(snap, out);
+    expect(out.fire).toBe(true);
+    expect(out.connected).toBe(true);
+    m.update(null, out);
+    expect(out).toEqual(createPadState());
   });
 });

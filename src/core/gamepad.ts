@@ -167,3 +167,14 @@ export class PadMapper {
     return out;
   }
 }
+
+/** Cambio de conexión del mando entre dos lecturas: 1 = se conectó, -1 = se desconectó, 0 = sin cambio. */
+export function connectionChange(before: boolean, now: boolean): -1 | 0 | 1 {
+  if (before === now) return 0;
+  return now ? 1 : -1;
+}
+
+/** Si el mando se desconecta mientras se juega, la partida se pausa (el jugador puede haber perdido el control). */
+export function pauseOnDisconnect(change: -1 | 0 | 1, playing: boolean): boolean {
+  return change === -1 && playing;
+}

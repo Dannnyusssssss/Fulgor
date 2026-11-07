@@ -32,6 +32,17 @@ export const TEXTS = {
     best: 'Mejor marca',
     completed: 'Completada',
     ability: 'Habilidad',
+    mode: 'Modo',
+    bestWave: 'mejor oleada',
+    modeLocked: 'Resistencia se desbloquea al completar esta arena en el modo Oleadas.',
+  },
+  modes: {
+    waves: 'Oleadas',
+    endless: 'Resistencia',
+  },
+  modeDescriptions: {
+    waves: '10 oleadas con el Coloso en la última.',
+    endless: 'Oleadas sin fin, cada vez más duras, con el Coloso cada 10 oleadas.',
   },
   difficulties: {
     easy: 'Fácil',
@@ -40,6 +51,8 @@ export const TEXTS = {
   },
   results: {
     victoryTitle: 'Arena completada',
+    endlessTitle: 'Resistencia terminada',
+    bestWave: 'Mejor oleada',
     points: 'Puntos',
     best: 'Mejor marca',
     newRecord: '¡Nueva mejor marca!',
@@ -87,9 +100,11 @@ export const TEXTS = {
     qualityHigh: 'Alta',
     on: 'Sí',
     off: 'No',
-    saveFailed: 'No se pudieron guardar los ajustes en este navegador.',
+    saveFailed:
+      'No se pudo guardar en este navegador (almacenamiento bloqueado o lleno). Puedes seguir jugando, pero el progreso no se conservará al cerrar.',
     aimAssist: 'Apuntado asistido',
     autoFire: 'Disparo automático (una pulsación lo activa o lo detiene)',
+    dynamicResolution: 'Resolución dinámica (la baja si el juego va lento)',
   },
   hud: {
     health: 'Vida',
@@ -244,6 +259,10 @@ export const TEXTS = {
     projectiles: 'Proyectiles',
     flashes: 'Destellos/s',
     drawCalls: 'Draw calls',
+    geometries: 'Geometrías',
+    textures: 'Texturas',
+    programs: 'Shaders',
+    pixelRatio: 'Relación de píxeles',
     god: 'Invulnerable',
   },
 } as const;

@@ -11,12 +11,14 @@ import type { ArenaDef } from '../data/arenas';
 import type { AbilityId } from '../data/abilities';
 import { BALANCE } from '../data/balance';
 import { DIFFICULTIES, type Difficulty, type DifficultyDef } from '../data/difficulty';
+import type { GameMode } from '../data/modes';
 import { WAVES, type WaveDef } from '../data/waves';
 import { WEAPON_ORDER, type WeaponDef, type WeaponId } from '../data/weapons';
 import { createAbilityState, type AbilityState } from './abilities';
 import { createZoneSlot, type BossZone } from './boss-zones';
 import { createArena, type Arena } from './arena';
 import { createDirector, DirectorPhase, type DirectorState } from './director';
+import { endlessWaveDef, isEndlessBossWave } from './endless';
 import { EventQueue, GameEvent } from './events';
 import type { AiTarget } from './enemies/common';
 import { createEnemySlot, type Enemy } from './enemies/types';
@@ -46,6 +48,9 @@ export interface World {
   tick: number;
   time: number;
   readonly arena: Arena;
+  /** Modo de juego: Oleadas (lista fija de la arena) o Resistencia (oleadas generadas sin fin). */
+  readonly mode: GameMode;
+  /** Oleadas de la arena (solo se usan en el modo Oleadas). */
   readonly waves: readonly WaveDef[];
   readonly difficulty: Difficulty;
   readonly diff: DifficultyDef;
@@ -107,6 +112,8 @@ export interface WorldOptions {
   difficulty?: Difficulty;
   god?: boolean;
   tuning?: Tuning;
+  /** Modo de juego (por defecto Oleadas). */
+  mode?: GameMode;
   /** Oleada inicial (depuración). */
   startWave?: number;
   stress?: boolean;
@@ -125,10 +132,12 @@ export function createWorld(opts: WorldOptions): World {
   const b = arena.bounds;
   const enemyCap = BALANCE.pools.enemies;
   const difficulty = opts.difficulty ?? 'normal';
+  const mode = opts.mode ?? 'waves';
   const waves = WAVES[opts.arena.id] ?? [];
+  // En Resistencia no hay última oleada; la inicial (solo depuración) se limita a 99.
   const startWave = Math.min(
     Math.max(1, Math.floor(opts.startWave ?? 1)),
-    Math.max(1, waves.length),
+    mode === 'endless' ? MAX_ENDLESS_START_WAVE : Math.max(1, waves.length),
   );
   const stress = opts.stress ?? false;
   const unlocked = WEAPON_ORDER.map((id) => id === 'pulsador' || (opts.weapons ?? []).includes(id));
@@ -142,6 +151,7 @@ export function createWorld(opts: WorldOptions): World {
     tick: 0,
     time: 0,
     arena,
+    mode,
     waves,
     difficulty,
     diff: DIFFICULTIES[difficulty],
@@ -265,6 +275,26 @@ export function refreshStats(world: World): void {
     if (out !== undefined) effectiveWeapon(out, t.weapons[id], world.mods);
   });
   effectivePlayer(world.playerStats, t.player, world.mods);
+}
+
+/** Oleada inicial más alta que se acepta en Resistencia (depuración). */
+export const MAX_ENDLESS_START_WAVE = 99;
+
+/** Definición de la oleada n (desde 1), o undefined si no existe (después de la última en el modo Oleadas). */
+export function waveDefAt(world: World, wave: number): WaveDef | undefined {
+  if (world.mode === 'endless') return endlessWaveDef(wave);
+  return world.waves[wave - 1];
+}
+
+/** La oleada n es la del jefe. */
+export function isBossWave(world: World, wave: number): boolean {
+  if (world.mode === 'endless') return isEndlessBossWave(wave);
+  return world.waves[wave - 1]?.boss === true;
+}
+
+/** La oleada n es la última del modo (en Resistencia nunca). */
+export function isLastWave(world: World, wave: number): boolean {
+  return world.mode === 'waves' && wave >= world.waves.length;
 }
 
 /** Arma en la mano y su estado. */

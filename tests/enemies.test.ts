@@ -212,11 +212,27 @@ describe('Reparador', () => {
   it('se aleja del jugador si no tiene a quién curar y nunca ataca', () => {
     const ctx = makeContext(HANGAR_COBALTO, 0, 4);
     const healer = makeEnemy(ctx, EnemyKind.Reparador, 0, 0);
-    (ctx.enemies as Enemy[]).push(healer);
+    // Un aliado sano y lejos: no hay a quién curar, pero no está solo.
+    const ally = makeEnemy(ctx, EnemyKind.Zumbador, -15, -15, 1);
+    (ctx.enemies as Enemy[]).push(healer, ally);
     let flags = 0;
     for (let i = 0; i < 120; i++) flags |= updateReparador(healer, ctx, DT);
     expect(flags).toBe(0);
     expect(Math.hypot(healer.pos.x, healer.pos.z - 4)).toBeGreaterThan(6);
+  });
+
+  it('si se queda sin aliados deja de huir y se acerca al jugador', () => {
+    const ctx = makeContext(HANGAR_COBALTO, 0, 4);
+    const healer = makeEnemy(ctx, EnemyKind.Reparador, 0, -8);
+    // Un enemigo inactivo (ranura libre del pool) no cuenta como aliado.
+    const gone = makeEnemy(ctx, EnemyKind.Zumbador, -15, -15, 1);
+    gone.active = false;
+    (ctx.enemies as Enemy[]).push(healer, gone);
+    const start = Math.hypot(healer.pos.x, healer.pos.z - 4);
+    let flags = 0;
+    for (let i = 0; i < 180; i++) flags |= updateReparador(healer, ctx, DT);
+    expect(flags).toBe(0);
+    expect(Math.hypot(healer.pos.x, healer.pos.z - 4)).toBeLessThan(start - 2);
   });
 });
 

@@ -159,7 +159,14 @@ describe('SpatialHash', () => {
 
 describe('parseDebugParams', () => {
   it('lee debug y god', () => {
-    const off = { debug: false, god: false, stress: false, arena: null, wave: null };
+    const off = {
+      debug: false,
+      god: false,
+      stress: false,
+      arena: null,
+      wave: null,
+      endless: false,
+    };
     expect(parseDebugParams('?debug')).toEqual({ ...off, debug: true });
     expect(parseDebugParams('?debug=1&god=true')).toEqual({ ...off, debug: true, god: true });
     expect(parseDebugParams('?arena=jardin-cristal&wave=10&stress')).toEqual({
@@ -168,15 +175,29 @@ describe('parseDebugParams', () => {
       arena: 'jardin-cristal',
       wave: 10,
     });
+    // Resistencia: ?mode=resistencia y oleada inicial de hasta 99.
+    expect(parseDebugParams('?mode=resistencia&wave=42')).toEqual({
+      ...off,
+      endless: true,
+      wave: 42,
+    });
   });
 
   it('ignora valores desconocidos, cadenas vacías y cadenas demasiado largas', () => {
-    const off = { debug: false, god: false, stress: false, arena: null, wave: null };
+    const off = {
+      debug: false,
+      god: false,
+      stress: false,
+      arena: null,
+      wave: null,
+      endless: false,
+    };
     expect(parseDebugParams('?debug=no&god=2')).toEqual(off);
     expect(parseDebugParams('')).toEqual(off);
     expect(parseDebugParams('?debug&x=' + 'a'.repeat(300))).toEqual(off);
     expect(parseDebugParams('?<script>')).toEqual(off);
-    expect(parseDebugParams('?arena=../x&wave=11')).toEqual(off);
+    expect(parseDebugParams('?arena=../x&wave=100')).toEqual(off);
+    expect(parseDebugParams('?wave=05&mode=oleadas')).toEqual(off);
     expect(parseDebugParams('?wave=0')).toEqual(off);
     expect(parseDebugParams('?wave=3.5&arena=A')).toEqual(off);
   });

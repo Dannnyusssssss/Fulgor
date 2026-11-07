@@ -26,7 +26,7 @@ import { BLINDADO } from '../data/enemies';
 import { GameEvent, type EventRecord } from '../game/events';
 import type { PlayerState } from '../game/player';
 
-const IMPACT_CAPACITY = 48;
+const IMPACT_CAPACITY: number = BALANCE.quality.high.impacts;
 const FRAGMENT_CAPACITY: number = BALANCE.quality.high.fragments;
 const FRAG_COLOR = new Color(0xff6fb0);
 const FRAG_COLOR_ALT = new Color(0x8ff3ff);
@@ -305,8 +305,10 @@ export class Effects {
     intensity: number,
     colorIndex: number,
   ): void {
-    const i = this.impactCursor;
-    this.impactCursor = (this.impactCursor + 1) % IMPACT_CAPACITY;
+    // Búfer circular dentro del límite de la calidad: si se llena, se reemplazan los más antiguos.
+    const limit = BALANCE.quality[this.settings.quality].impacts;
+    const i = this.impactCursor % limit;
+    this.impactCursor = (i + 1) % limit;
     this.ix[i] = x;
     this.iy[i] = y;
     this.iz[i] = z;

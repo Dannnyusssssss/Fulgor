@@ -6,6 +6,7 @@ import { isAbilityId, type AbilityId } from '../data/abilities';
 import { BALANCE, type Quality } from '../data/balance';
 import { isDifficulty, type Difficulty } from '../data/difficulty';
 import { META } from '../data/meta';
+import { isGameMode, type GameMode } from '../data/modes';
 import { isWeaponId, WEAPON_ORDER, WEAPON_UNLOCKS, type WeaponId } from '../data/weapons';
 
 export interface Settings {
@@ -22,6 +23,9 @@ export interface Settings {
   /** Asistencias: apuntado asistido y disparo automático (alternar con una pulsación). */
   aimAssist: boolean;
   autoFire: boolean;
+  /** Resolución dinámica y la escala que alcanzó (se guarda para empezar la próxima vez desde ahí). */
+  dynamicResolution: boolean;
+  renderScale: number;
 }
 
 export interface SaveData {
@@ -38,9 +42,14 @@ export interface SaveData {
     unlockedWeapons: WeaponId[];
     /** Última habilidad elegida. */
     lastAbility: AbilityId;
+    /** Último modo elegido (Oleadas o Resistencia). */
+    lastMode: GameMode;
   };
   /** Mejores puntuaciones por `arena:dificultad`. */
   best: Record<string, number>;
+  /** Modo Resistencia: mejores puntuaciones y mejor oleada alcanzada, por `arena:dificultad`. */
+  bestEndless: Record<string, number>;
+  bestEndlessWave: Record<string, number>;
   /** Última semilla usada (32 bits sin signo) o null. */
   lastSeed: number | null;
 }
@@ -51,6 +60,8 @@ const MAX_ID_LENGTH = 40;
 const MAX_ARENAS = 32;
 const MAX_ENTRIES = MAX_ARENAS * 3;
 const MAX_SCORE = 1e9;
+/** Oleada más alta que se acepta leer de un guardado (Resistencia). */
+const MAX_WAVE = 100000;
 const ID_PATTERN = /^[a-z0-9-]+$/;
 const RESULT_KEY_PATTERN = /^[a-z0-9-]+:(easy|normal|hard)$/;
 export const FIRST_ARENA = 'hangar-cobalto';
@@ -73,6 +84,8 @@ export function defaultSettings(prefersReducedMotion: boolean): Settings {
     quality: 'medium',
     aimAssist: false,
     autoFire: false,
+    dynamicResolution: false,
+    renderScale: 1,
   };
 }
 
@@ -87,8 +100,11 @@ export function defaultSave(prefersReducedMotion: boolean): SaveData {
       lastDifficulty: 'normal',
       unlockedWeapons: ['pulsador'],
       lastAbility: 'onda',
+      lastMode: 'waves',
     },
     best: {},
+    bestEndless: {},
+    bestEndlessWave: {},
     lastSeed: null,
   };
 }
@@ -113,6 +129,25 @@ function isResultKey(v: unknown): v is string {
   return typeof v === 'string' && v.length <= MAX_ID_LENGTH + 8 && RESULT_KEY_PATTERN.test(v);
 }
 
+/**
+ * Lee un mapa `arena:dificultad` → número entero en [0, max]. Ignora claves con otro formato y valores no válidos,
+ * y como mucho acepta MAX_ENTRIES entradas.
+ */
+function parseResultMap(raw: unknown, max: number): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!isRecord(raw)) return out;
+  let count = 0;
+  for (const [k, v] of Object.entries(raw)) {
+    if (count >= MAX_ENTRIES) break;
+    if (!isResultKey(k)) continue;
+    const n = num(v, 0, max, -1);
+    if (n < 0) continue;
+    out[k] = Math.floor(n);
+    count++;
+  }
+  return out;
+}
+
 export function parseSettings(raw: unknown, prefersReducedMotion: boolean): Settings {
   const d = defaultSettings(prefersReducedMotion);
   if (!isRecord(raw)) return d;
@@ -130,6 +165,13 @@ export function parseSettings(raw: unknown, prefersReducedMotion: boolean): Sett
     quality: q === 'low' || q === 'medium' || q === 'high' ? q : d.quality,
     aimAssist: bool(raw['aimAssist'], d.aimAssist),
     autoFire: bool(raw['autoFire'], d.autoFire),
+    dynamicResolution: bool(raw['dynamicResolution'], d.dynamicResolution),
+    renderScale: num(
+      raw['renderScale'],
+      BALANCE.dynamicResolution.minScale,
+      BALANCE.dynamicResolution.maxScale,
+      d.renderScale,
+    ),
   };
 }
 
@@ -151,6 +193,7 @@ export function parseSave(text: string | null, prefersReducedMotion: boolean): S
   let lastDifficulty = d.progress.lastDifficulty;
   const weapons: WeaponId[] = [...d.progress.unlockedWeapons];
   let lastAbility = d.progress.lastAbility;
+  let lastMode = d.progress.lastMode;
   const progress = raw['progress'];
   if (isRecord(progress)) {
     if (Array.isArray(progress['unlockedArenas'])) {
@@ -172,6 +215,7 @@ export function parseSave(text: string | null, prefersReducedMotion: boolean): S
       }
     }
     if (isAbilityId(progress['lastAbility'])) lastAbility = progress['lastAbility'];
+    if (isGameMode(progress['lastMode'])) lastMode = progress['lastMode'];
   }
   // Compatibilidad: una arena ya completada (guardados del Hito 2) concede las armas que dependen de ella.
   for (const id of WEAPON_ORDER) {
@@ -198,6 +242,10 @@ export function parseSave(text: string | null, prefersReducedMotion: boolean): S
     }
   }
 
+  // Marcas de Resistencia (guardados anteriores al Hito 4 no las tienen: quedan vacías).
+  const bestEndless = parseResultMap(raw['bestEndless'], MAX_SCORE);
+  const bestEndlessWave = parseResultMap(raw['bestEndlessWave'], MAX_WAVE);
+
   const seed = raw['lastSeed'];
   const lastSeed =
     typeof seed === 'number' && Number.isInteger(seed) && seed >= 0 && seed <= 0xffffffff
@@ -214,8 +262,11 @@ export function parseSave(text: string | null, prefersReducedMotion: boolean): S
       lastDifficulty,
       unlockedWeapons: weapons,
       lastAbility,
+      lastMode,
     },
     best,
+    bestEndless,
+    bestEndlessWave,
     lastSeed,
   };
 }

@@ -166,7 +166,18 @@ export class DebugOverlay {
     parent.append(this.root);
   }
 
-  update(dt: number, world: World, flashesInWindow: number, drawCalls: number): void {
+  update(
+    dt: number,
+    world: World,
+    flashesInWindow: number,
+    render: {
+      calls: number;
+      geometries: number;
+      textures: number;
+      programs: number;
+      pixelRatio: number;
+    },
+  ): void {
     this.frames++;
     this.acc += dt;
     if (this.acc < 0.25) return;
@@ -180,7 +191,15 @@ export class DebugOverlay {
         `${TEXTS.debug.projectiles}: ${world.projectiles.activeCount}\n` +
         `${TEXTS.debug.flashes}: ${flashesInWindow}
 ` +
-        `${TEXTS.debug.drawCalls}: ${drawCalls}`,
+        `${TEXTS.debug.drawCalls}: ${render.calls}
+` +
+        `${TEXTS.debug.geometries}: ${render.geometries}
+` +
+        `${TEXTS.debug.textures}: ${render.textures}
+` +
+        `${TEXTS.debug.programs}: ${render.programs}
+` +
+        `${TEXTS.debug.pixelRatio}: ${render.pixelRatio.toFixed(2)}`,
     );
   }
 }

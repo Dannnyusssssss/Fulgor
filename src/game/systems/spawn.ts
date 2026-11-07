@@ -5,6 +5,7 @@ import { BALANCE } from '../../data/balance';
 import { GameEvent } from '../events';
 import { COLOSO_VARIANTS } from '../../data/enemies';
 import { EnemyKind, EnemyState, kindDef, setState, type EnemyKindId } from '../enemies/types';
+import { endlessBossHealth } from '../endless';
 import type { World } from '../world';
 
 export function spawnEnemy(
@@ -26,11 +27,12 @@ export function spawnEnemy(
   e.vel.z = 0;
   e.yaw = yaw;
   e.radius = def.radius;
-  // El Coloso tiene más o menos vida según la arena y la dificultad.
+  // El Coloso tiene más o menos vida según la arena y la dificultad; en Resistencia, además, sube en cada aparición.
   const variant = COLOSO_VARIANTS[world.arena.def.id];
+  const cycle = world.mode === 'endless' ? endlessBossHealth(world.director.wave) : 1;
   const health =
     kind === EnemyKind.Coloso
-      ? def.health * (variant?.healthMultiplier ?? 1) * world.diff.bossHealthMultiplier
+      ? def.health * (variant?.healthMultiplier ?? 1) * world.diff.bossHealthMultiplier * cycle
       : def.health;
   e.health = health;
   e.maxHealth = health;

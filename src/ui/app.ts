@@ -4,8 +4,15 @@
  */
 import type { Mesh } from 'three';
 import { AudioEngine } from '../audio/engine';
+import { DynamicResolution } from '../core/dyn-res';
 import { FlashBudget } from '../core/flash-budget';
-import { createPadState, PAD, PadMapper } from '../core/gamepad';
+import {
+  connectionChange,
+  createPadState,
+  PAD,
+  PadMapper,
+  pauseOnDisconnect,
+} from '../core/gamepad';
 import { emptyCommand, InputMapper } from '../core/input';
 import { FixedTimestep } from '../core/loop';
 import { clamp, damp, lerp } from '../core/math';
@@ -15,6 +22,7 @@ import { BALANCE } from '../data/balance';
 import { PREVENT_DEFAULT_CODES } from '../data/controls';
 import type { AbilityId } from '../data/abilities';
 import type { Difficulty } from '../data/difficulty';
+import type { GameMode } from '../data/modes';
 import { PERKS } from '../data/perks';
 import { TEXTS } from '../data/texts';
 import { aimAssistDelta } from '../game/aim-assist';
@@ -40,7 +48,14 @@ import { PlayerMesh } from '../render/player-mesh';
 import { ProjectileMeshes } from '../render/projectiles';
 import { Reticle } from '../render/reticle';
 import { GameRenderer } from '../render/scene';
-import { bestFor, isUnlocked, recordRun } from '../save/progress';
+import {
+  bestEndlessFor,
+  bestFor,
+  isEndlessUnlocked,
+  isUnlocked,
+  recordEndlessRun,
+  recordRun,
+} from '../save/progress';
 import type { SaveData, Settings } from '../save/schema';
 import { writeSave, type StorageLike } from '../save/storage';
 import { DebugOverlay } from './debug-overlay';
@@ -67,6 +82,9 @@ type AppState = 'menu' | 'select' | 'playing' | 'paused' | 'perks' | 'results' |
 /** Cambio del campo de visión (grados) al esquivar y al apuntar. */
 const FOV_DODGE = 4;
 const FOV_AIM = -5;
+
+/** Como mucho un aviso de "no se pudo guardar" cada tantos segundos (el guardado puede fallar muchas veces seguidas). */
+const SAVE_NOTICE_SECONDS = 30;
 
 /** Segundos entre el final de la partida y la pantalla de resultados (deja ver el final). */
 const END_DELAY = 1.2;
@@ -105,6 +123,8 @@ class App implements SettingsHost, SelectHost {
     BALANCE.flash.windowSeconds,
   );
   private readonly cmd = emptyCommand();
+  /** Resolución dinámica (solo mide mientras se juega y si la opción está activada). */
+  private readonly dynRes: DynamicResolution;
   /** Audio sintetizado: el contexto se crea con el primer gesto del jugador. */
   private readonly audio = new AudioEngine();
   /** Mando: lectura del navegador y mapeo puro. */
@@ -156,12 +176,17 @@ class App implements SettingsHost, SelectHost {
   private pointerLocked = false;
   /** Se pidió la captura del puntero y aún no hay respuesta. */
   private lockPending = false;
+  /** Pantalla en la que estaba el jugador cuando se perdió el contexto WebGL (para volver a ella al restaurarse). */
+  private stateBeforeLoss: AppState = 'menu';
+  /** Momento (s) del último aviso de guardado fallido. */
+  private lastSaveNotice = -Infinity;
 
   constructor(
     private readonly opts: AppOptions,
     private readonly renderer: GameRenderer,
   ) {
     this.save = opts.save;
+    this.dynRes = new DynamicResolution(BALANCE.dynamicResolution, opts.save.settings.renderScale);
     this.applyDebugSelection();
     const s = this.save.settings;
     this.builtArena = this.selectedArena();
@@ -235,7 +260,12 @@ class App implements SettingsHost, SelectHost {
   }
 
   private persist(): void {
-    if (!writeSave(this.opts.storage, this.save)) this.notice.show(TEXTS.settings.saveFailed, 4);
+    if (writeSave(this.opts.storage, this.save)) return;
+    // Sin almacenamiento o con la cuota llena el juego sigue con los datos en memoria; se avisa sin repetir.
+    const now = performance.now() / 1000;
+    if (now - this.lastSaveNotice < SAVE_NOTICE_SECONDS) return;
+    this.lastSaveNotice = now;
+    this.notice.show(TEXTS.settings.saveFailed, 5);
   }
 
   private applySettings(): void {
@@ -243,6 +273,9 @@ class App implements SettingsHost, SelectHost {
     this.budget.setReduced(s.reduceFlashes);
     this.renderer.setQuality(s.quality);
     this.renderer.setFov(s.fov);
+    // Sin resolución dinámica, siempre a resolución completa.
+    this.dynRes.setScale(s.dynamicResolution ? s.renderScale : 1);
+    this.renderer.setRenderScale(this.dynRes.current);
     const shadows = BALANCE.quality[s.quality].shadows;
     if (shadows !== this.arenaShadows) {
       // Las sombras cambian los shaders: se reconstruye la arena y se recompilan los materiales.
@@ -298,6 +331,31 @@ class App implements SettingsHost, SelectHost {
     this.persist();
   }
 
+  /**
+   * Modo efectivo: Resistencia solo si está desbloqueada en la arena elegida (o si se fuerza con ?mode=resistencia,
+   * solo para depuración); si no, Oleadas.
+   */
+  mode(): GameMode {
+    if (this.opts.debug.endless) return 'endless';
+    const arena = this.selectedArena().id;
+    return this.save.progress.lastMode === 'endless' && isEndlessUnlocked(this.save, arena)
+      ? 'endless'
+      : 'waves';
+  }
+
+  selectMode(mode: GameMode): void {
+    this.save.progress.lastMode = mode;
+    this.persist();
+  }
+
+  endlessUnlocked(arena: string): boolean {
+    return isEndlessUnlocked(this.save, arena) || this.opts.debug.endless;
+  }
+
+  bestEndless(arena: string, difficulty: Difficulty): { points: number; wave: number } {
+    return bestEndlessFor(this.save, arena, difficulty);
+  }
+
   selection(): { arena: string; difficulty: Difficulty } {
     return { arena: this.selectedArena().id, difficulty: this.save.progress.lastDifficulty };
   }
@@ -323,6 +381,7 @@ class App implements SettingsHost, SelectHost {
       seed,
       arena,
       difficulty: this.save.progress.lastDifficulty,
+      mode: this.mode(),
       god: d.god,
       tuning: this.tuning,
       startWave: d.wave ?? 1,
@@ -396,6 +455,7 @@ class App implements SettingsHost, SelectHost {
     this.hud.setVisible(true);
     this.reticle.setVisible(true);
     this.timestep.reset();
+    this.dynRes.resetWindow();
     if (lock) this.requestLock();
     this.opts.canvas.focus({ preventScroll: true });
   }
@@ -408,10 +468,11 @@ class App implements SettingsHost, SelectHost {
   /** Lee el mando una vez por frame y avisa al conectarlo o desconectarlo. */
   private pollPad(): void {
     this.padMapper.update(this.padReader.read(), this.pad);
-    if (this.pad.connected !== this.padConnected) {
-      this.padConnected = this.pad.connected;
-      this.notice.show(this.padConnected ? TEXTS.gamepadConnected : TEXTS.gamepadDisconnected, 3);
-    }
+    const change = connectionChange(this.padConnected, this.pad.connected);
+    if (change === 0) return;
+    this.padConnected = this.pad.connected;
+    this.notice.show(change > 0 ? TEXTS.gamepadConnected : TEXTS.gamepadDisconnected, 3);
+    if (pauseOnDisconnect(change, this.state === 'playing')) this.pauseGame();
   }
 
   private pauseGame(): void {
@@ -484,15 +545,27 @@ class App implements SettingsHost, SelectHost {
     this.hideScreens();
     this.hud.setVisible(false);
     this.reticle.setVisible(false);
-    // Las partidas de depuración (?stress, ?god u oleada inicial) no cuentan para el progreso.
+    // Las partidas de depuración (?stress, ?god, oleada inicial o ?mode) no cuentan para el progreso.
     const d = this.opts.debug;
-    const counts = !d.stress && !d.god && d.wave === null;
+    const counts = !d.stress && !d.god && d.wave === null && !d.endless;
     const arena = w.arena.def.id;
-    let best = bestFor(this.save, arena, w.difficulty);
+    const endless = w.mode === 'endless';
+    let best = endless
+      ? bestEndlessFor(this.save, arena, w.difficulty).points
+      : bestFor(this.save, arena, w.difficulty);
+    let bestWave = endless ? bestEndlessFor(this.save, arena, w.difficulty).wave : 0;
     let newRecord = false;
     let unlocked: string | null = null;
     let unlockedWeapons: string[] = [];
-    if (counts) {
+    if (counts && endless) {
+      // Resistencia: marcas propias; no completa ni desbloquea arenas.
+      const r = recordEndlessRun(this.save, arena, w.difficulty, w.score.points, w.director.wave);
+      best = r.best;
+      bestWave = r.bestWave;
+      newRecord = r.newRecord;
+      unlockedWeapons = r.unlockedWeapons.map((id) => TEXTS.weapons[id]);
+      this.persist();
+    } else if (counts) {
       const r = recordRun(
         this.save,
         arena,
@@ -508,6 +581,8 @@ class App implements SettingsHost, SelectHost {
       this.persist();
     }
     this.results.setResult({
+      mode: w.mode,
+      bestWave,
       victory: w.victory,
       points: w.score.points,
       best,
@@ -633,16 +708,33 @@ class App implements SettingsHost, SelectHost {
     });
 
     canvas.addEventListener('webglcontextlost', (ev) => {
+      // preventDefault permite que el navegador intente restaurar el contexto.
       ev.preventDefault();
+      if (this.state === 'lost-context') return;
       this.pauseGame();
+      this.input.releaseAll();
+      this.exitLock();
+      this.stateBeforeLoss = this.state;
       this.state = 'lost-context';
+      this.hud.setVisible(false);
       this.hideScreens();
       this.error.showMessage(TEXTS.errors.contextLost);
     });
     canvas.addEventListener('webglcontextrestored', () => {
       this.error.hide();
-      this.state = 'paused';
-      this.click.showWith(TEXTS.errors.contextRestored);
+      this.renderer.forceResize();
+      this.timestep.reset();
+      // Si se jugaba, se vuelve en pausa; si se estaba en un menú, se vuelve a ese menú.
+      const before = this.stateBeforeLoss;
+      if (before === 'paused' || before === 'perks') {
+        this.state = 'paused';
+        this.hud.setVisible(true);
+        this.click.showWith(TEXTS.errors.contextRestored);
+      } else if (before === 'select') this.showSelect();
+      else if (before === 'results') {
+        this.state = 'results';
+        this.results.show();
+      } else this.showMenu();
     });
   }
 
@@ -798,11 +890,21 @@ class App implements SettingsHost, SelectHost {
       this.indicators.update(world, this.renderer.camera, 0, 0, false);
     }
     this.notice.update(dt);
-    this.debug?.update(
-      dt,
-      world,
-      this.budget.grantedInWindow(now),
-      this.renderer.renderer.info.render.calls,
-    );
+    // Resolución dinámica: solo cuenta el tiempo de juego (no los menús ni la pausa).
+    if (this.state === 'playing' && s.dynamicResolution && this.dynRes.frame(dt)) {
+      s.renderScale = this.dynRes.current;
+      this.renderer.setRenderScale(s.renderScale);
+      this.persist();
+    }
+    if (this.debug !== null) {
+      const info = this.renderer.renderer.info;
+      this.debug.update(dt, world, this.budget.grantedInWindow(now), {
+        calls: info.render.calls,
+        geometries: info.memory.geometries,
+        textures: info.memory.textures,
+        programs: info.programs?.length ?? 0,
+        pixelRatio: this.renderer.pixelRatio,
+      });
+    }
   }
 }

@@ -1,6 +1,7 @@
 /**
  * Reparador: no ataca. Busca al aliado más dañado a su alcance (con línea de visión) y lo cura con un haz estable.
  * Se queda detrás de sus aliados, lejos del jugador: es un objetivo prioritario.
+ * Si se queda sin aliados deja de huir y se acerca despacio, para que nunca se pueda esconder sin fin.
  */
 import { distSq, normalizeInto, vec2, yawFromDir } from '../../core/math';
 import { hasLineOfSight } from '../collision';
@@ -9,6 +10,12 @@ import { EnemyState, isDamageable, setState, type Enemy } from './types';
 
 const away = vec2();
 const steerDir = vec2();
+
+/** Hay algún otro enemigo activo (aunque aún se esté materializando). */
+export function hasAllies(e: Enemy, ctx: EnemyContext): boolean {
+  for (const o of ctx.enemies) if (o !== e && o.active) return true;
+  return false;
+}
 
 /** Elige el aliado a curar: el de menor fracción de vida dentro del alcance (empate: índice más bajo). */
 export function pickHealTarget(e: Enemy, ctx: EnemyContext): number {
@@ -64,11 +71,15 @@ export function updateReparador(e: Enemy, ctx: EnemyContext, dt: number): number
       vx = (dx / len) * def.speed;
       vz = (dz / len) * def.speed;
     }
-  } else if (p.alive && d2 < def.keepAway * def.keepAway) {
+  } else if (p.alive && d2 < def.keepAway * def.keepAway && hasAllies(e, ctx)) {
     vx = away.x * def.speed;
     vz = away.z * def.speed;
-  } else if (p.alive && d2 > (def.keepAway + 5) * (def.keepAway + 5)) {
-    // Muy lejos: se acerca un poco para no quedarse fuera de la pelea.
+  } else if (
+    p.alive &&
+    (d2 > (def.keepAway + 5) * (def.keepAway + 5) || !hasAllies(e, ctx)) &&
+    d2 > 4
+  ) {
+    // Muy lejos, o solo: se acerca despacio para no quedarse fuera de la pelea ni esconderse.
     if (chaseDirection(e, ctx, seesPlayer(e, ctx), d2, steerDir)) {
       vx = steerDir.x * def.speed * 0.6;
       vz = steerDir.z * def.speed * 0.6;

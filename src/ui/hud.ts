@@ -67,7 +67,6 @@ export class Hud {
   private readonly bossBar = makeBar(TEXTS.hud.boss, 'boss');
   private readonly bossPhase = el('div', 'hud-boss-phase', '');
   private bannerTimer = 0;
-  private totalWaves = 0;
   private hitLevel = 0;
   private lastVignette = -1;
   private lastClass = '';
@@ -122,7 +121,7 @@ export class Hud {
 
   onEvent(e: EventRecord): void {
     if (e.type === GameEvent.WaveStart) {
-      const bossWave = e.a >= this.totalWaves && this.totalWaves > 0;
+      const bossWave = e.c === 1;
       setText(this.banner, bossWave ? TEXTS.hud.bossIncoming : `${TEXTS.hud.waveIncoming} ${e.a}`);
       setVisible(this.banner, true);
       this.bannerTimer = 2.2;
@@ -142,7 +141,6 @@ export class Hud {
   }
 
   update(world: World, dt: number): void {
-    this.totalWaves = world.waves.length;
     const p = world.player;
     // Jefe: barra visible solo mientras está en la arena.
     let boss = null;
@@ -211,7 +209,9 @@ export class Hud {
     );
 
     const s = world.director;
-    setText(this.wave, `${TEXTS.hud.wave} ${Math.max(1, s.wave)}/${world.waves.length}`);
+    // En Resistencia no hay total de oleadas.
+    const total = world.mode === 'endless' ? '' : `/${world.waves.length}`;
+    setText(this.wave, `${TEXTS.hud.wave} ${Math.max(1, s.wave)}${total}`);
     setText(this.score, `${TEXTS.hud.score} ${world.score.points}`);
     const combo = world.score.combo;
     setText(this.combo, combo > 1 ? `${TEXTS.hud.combo}${comboMultiplier(combo).toFixed(1)}` : '');

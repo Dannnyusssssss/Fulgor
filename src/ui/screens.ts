@@ -6,6 +6,7 @@ import { ABILITY_ORDER, type AbilityId } from '../data/abilities';
 import { BALANCE, type Quality } from '../data/balance';
 import { DIFFICULTY_ORDER, type Difficulty } from '../data/difficulty';
 import { META } from '../data/meta';
+import { MODE_ORDER, type GameMode } from '../data/modes';
 import { TEXTS } from '../data/texts';
 import type { Settings } from '../save/schema';
 import { button, el, setText, setVisible, slider, toggle } from './dom';
@@ -181,6 +182,15 @@ export class SettingsScreen extends Panel {
         t.on,
         t.off,
       ),
+      // Al apagarla se vuelve a la resolución completa.
+      toggle(
+        t.dynamicResolution,
+        () => h.get().dynamicResolution,
+        (v) =>
+          h.update(v ? { dynamicResolution: true } : { dynamicResolution: false, renderScale: 1 }),
+        t.on,
+        t.off,
+      ),
       button(t.back, this.onBack, 'btn btn-primary'),
     );
     super.show();
@@ -256,6 +266,11 @@ export interface SelectHost {
   select(arena: string, difficulty: Difficulty): void;
   ability(): AbilityId;
   selectAbility(id: AbilityId): void;
+  /** Modo elegido (si Resistencia no está desbloqueada en la arena elegida, siempre es Oleadas). */
+  mode(): GameMode;
+  selectMode(mode: GameMode): void;
+  endlessUnlocked(arena: string): boolean;
+  bestEndless(arena: string, difficulty: Difficulty): { points: number; wave: number };
 }
 
 /** Selección de arena y dificultad, toda con botones (teclado y ratón). */
@@ -264,6 +279,8 @@ export class SelectScreen extends Panel {
   private readonly difficulties = el('div', 'segmented');
   private readonly abilities = el('div', 'segmented');
   private readonly abilityDesc = el('p', 'hint ability-desc', '');
+  private readonly modes = el('div', 'segmented');
+  private readonly modeDesc = el('p', 'hint ability-desc', '');
   constructor(
     parent: HTMLElement,
     private readonly host: SelectHost,
@@ -286,7 +303,11 @@ export class SelectScreen extends Panel {
     abilityRow.append(el('span', 'setting-label', TEXTS.select.ability), this.abilities);
     this.abilities.setAttribute('role', 'group');
     this.abilities.setAttribute('aria-label', TEXTS.select.ability);
-    card.append(diffRow, abilityRow, this.abilityDesc, actions);
+    const modeRow = el('div', 'setting-row');
+    modeRow.append(el('span', 'setting-label', TEXTS.select.mode), this.modes);
+    this.modes.setAttribute('role', 'group');
+    this.modes.setAttribute('aria-label', TEXTS.select.mode);
+    card.append(modeRow, this.modeDesc, diffRow, abilityRow, this.abilityDesc, actions);
     this.root.append(card);
     this.root.addEventListener('keydown', (ev) => {
       if (ev.code === 'Escape') {
@@ -304,6 +325,7 @@ export class SelectScreen extends Panel {
   private refresh(): void {
     const sel = this.host.selection();
     const arenas = this.host.arenas();
+    const mode = this.host.mode();
     const items: HTMLElement[] = [];
     arenas.forEach((a, i) => {
       const name = TEXTS.arenas[a.id] ?? a.id;
@@ -313,8 +335,15 @@ export class SelectScreen extends Panel {
       b.append(el('span', 'arena-name', name));
       if (a.unlocked) {
         b.append(el('span', 'arena-desc', TEXTS.arenaDescriptions[a.id] ?? ''));
-        const best = this.host.best(a.id, sel.difficulty);
-        const meta = `${TEXTS.select.best}: ${best}${a.completed ? ` · ${TEXTS.select.completed}` : ''}`;
+        // La marca que se muestra es la del modo elegido (en Resistencia, con la mejor oleada).
+        let meta: string;
+        if (mode === 'endless' && this.host.endlessUnlocked(a.id)) {
+          const e = this.host.bestEndless(a.id, sel.difficulty);
+          meta = `${TEXTS.select.best}: ${e.points} · ${TEXTS.select.bestWave} ${e.wave}`;
+        } else {
+          const best = this.host.best(a.id, sel.difficulty);
+          meta = `${TEXTS.select.best}: ${best}${a.completed ? ` · ${TEXTS.select.completed}` : ''}`;
+        }
         b.append(el('span', 'arena-meta', meta));
         b.addEventListener('click', (ev) => {
           ev.stopPropagation();
@@ -333,6 +362,25 @@ export class SelectScreen extends Panel {
       items.push(b);
     });
     this.list.replaceChildren(...items);
+
+    // Modo: Resistencia solo se puede elegir si la arena elegida ya se completó en Oleadas.
+    const endlessOk = this.host.endlessUnlocked(sel.arena);
+    const modeButtons = MODE_ORDER.map((m, i) => {
+      const b = button(
+        TEXTS.modes[m],
+        () => {
+          this.host.selectMode(m);
+          this.refresh();
+          this.modes.querySelectorAll('button')[i]?.focus();
+        },
+        'btn btn-seg',
+      );
+      b.setAttribute('aria-pressed', m === mode ? 'true' : 'false');
+      if (m === 'endless' && !endlessOk) b.disabled = true;
+      return b;
+    });
+    this.modes.replaceChildren(...modeButtons);
+    setText(this.modeDesc, endlessOk ? TEXTS.modeDescriptions[mode] : TEXTS.select.modeLocked);
 
     const diffButtons: HTMLButtonElement[] = [];
     for (const d of DIFFICULTY_ORDER) {
@@ -375,6 +423,9 @@ export class SelectScreen extends Panel {
 }
 
 export interface ResultInfo {
+  mode: GameMode;
+  /** Mejor oleada alcanzada en Resistencia (0 en el modo Oleadas). */
+  bestWave: number;
   victory: boolean;
   points: number;
   best: number;
@@ -408,14 +459,25 @@ export class ResultsScreen extends Panel {
   }
 
   setResult(r: ResultInfo): void {
-    setText(this.title, r.victory ? TEXTS.results.victoryTitle : TEXTS.defeat.title);
+    // Resistencia solo termina por derrota: tiene su propio título y muestra también la mejor oleada.
+    const endless = r.mode === 'endless';
+    setText(
+      this.title,
+      endless
+        ? TEXTS.results.endlessTitle
+        : r.victory
+          ? TEXTS.results.victoryTitle
+          : TEXTS.defeat.title,
+    );
     setVisible(this.record, r.newRecord);
-    this.lines.replaceChildren(
+    const lines = [
       el('p', 'result', `${TEXTS.results.points}: ${r.points}`),
       el('p', 'result', `${TEXTS.results.best}: ${r.best}`),
       el('p', 'result', `${TEXTS.results.wave}: ${Math.max(1, r.wave)}`),
-      el('p', 'result', `${TEXTS.results.bestCombo}: ${r.bestCombo}`),
-    );
+    ];
+    if (endless) lines.push(el('p', 'result', `${TEXTS.results.bestWave}: ${r.bestWave}`));
+    lines.push(el('p', 'result', `${TEXTS.results.bestCombo}: ${r.bestCombo}`));
+    this.lines.replaceChildren(...lines);
     setVisible(this.unlocked, r.unlocked !== null);
     setText(this.unlocked, r.unlocked !== null ? `${TEXTS.results.unlocked} ${r.unlocked}` : '');
     const weapons = r.unlockedWeapons.join(', ');
@@ -491,16 +553,34 @@ export class ClickOverlay extends Panel {
   }
 }
 
-/** Aviso breve no bloqueante (por ejemplo, si no se pudo capturar el puntero). */
+/** Avisos que pueden esperar mientras se muestra otro (los demás se descartan). */
+const NOTICE_QUEUE = 3;
+
+/**
+ * Aviso breve no bloqueante (por ejemplo, si no se pudo capturar el puntero). Si llega un aviso distinto mientras
+ * se muestra otro, espera su turno en una cola corta para que ninguno tape a otro sin llegar a leerse.
+ */
 export class Notice {
   private readonly root = el('div', 'notice-toast');
   private timer = 0;
+  private current = '';
+  private readonly queue: { text: string; seconds: number }[] = [];
   constructor(parent: HTMLElement) {
     this.root.hidden = true;
     this.root.setAttribute('role', 'status');
     parent.append(this.root);
   }
   show(text: string, seconds = 5): void {
+    if (this.timer > 0 && text !== this.current) {
+      if (this.queue.length < NOTICE_QUEUE && !this.queue.some((q) => q.text === text)) {
+        this.queue.push({ text, seconds });
+      }
+      return;
+    }
+    this.display(text, seconds);
+  }
+  private display(text: string, seconds: number): void {
+    this.current = text;
     setText(this.root, text);
     setVisible(this.root, true);
     this.timer = seconds;
@@ -508,7 +588,10 @@ export class Notice {
   update(dt: number): void {
     if (this.timer <= 0) return;
     this.timer -= dt;
-    if (this.timer <= 0) setVisible(this.root, false);
+    if (this.timer > 0) return;
+    const next = this.queue.shift();
+    if (next !== undefined) this.display(next.text, next.seconds);
+    else setVisible(this.root, false);
   }
 }
 
