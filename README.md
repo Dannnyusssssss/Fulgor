@@ -4,7 +4,7 @@ Shooter de arena en tercera persona con estilo low-poly neón. Eres **Chispa**, 
 
 **Jugar:** https://dannnyusssssss.github.io/Fulgor/
 
-![Portada de Fulgor](public/cover.png)
+![Portada de Fulgor](docs/cover.png)
 
 ## Cómo se juega
 

@@ -4,7 +4,7 @@
 
 Fulgor — Todos los derechos reservados. Titular: Danny Sivinta.
 
-Todo el arte (geometría procedural y texturas dibujadas con Canvas) y el sonido son propios. El juego no usa modelos, texturas, fuentes, música ni sonidos de terceros. El favicon (`public/favicon.png`) está dibujado con Canvas y la portada (`public/cover.png`) es una captura del propio juego con el título superpuesto.
+Todo el arte (geometría procedural y texturas dibujadas con Canvas) y el sonido son propios. El juego no usa modelos, texturas, fuentes, música ni sonidos de terceros. El favicon (`public/favicon.png`) está dibujado con Canvas y la portada (`docs/cover.png`) es una captura del propio juego con el título y una frase superpuestos.
 
 ## Dependencias de ejecución (se incluyen en `dist/`)
 
