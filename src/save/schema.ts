@@ -3,6 +3,7 @@
  * Cualquier dato ausente, de otro tipo o fuera de rango se reemplaza por el valor por defecto.
  */
 import { isAbilityId, type AbilityId } from '../data/abilities';
+import { arenaById } from '../data/arenas';
 import { BALANCE, type Quality } from '../data/balance';
 import { isDifficulty, type Difficulty } from '../data/difficulty';
 import { META } from '../data/meta';
@@ -125,8 +126,35 @@ function isId(v: unknown): v is string {
   return typeof v === 'string' && v.length > 0 && v.length <= MAX_ID_LENGTH && ID_PATTERN.test(v);
 }
 
+/** Identificador de una arena que existe en el juego (los desconocidos se descartan al leer). */
+function isArenaId(v: unknown): v is string {
+  return isId(v) && arenaById(v) !== undefined;
+}
+
+/** Clave `arena:dificultad` con formato válido y de una arena que existe. */
 function isResultKey(v: unknown): v is string {
-  return typeof v === 'string' && v.length <= MAX_ID_LENGTH + 8 && RESULT_KEY_PATTERN.test(v);
+  return (
+    typeof v === 'string' &&
+    v.length <= MAX_ID_LENGTH + 8 &&
+    RESULT_KEY_PATTERN.test(v) &&
+    isArenaId(v.slice(0, v.indexOf(':')))
+  );
+}
+
+/**
+ * Versión que declara un texto guardado, o null si no se puede leer.
+ * Sirve para no sobrescribir un guardado de una versión más nueva del juego.
+ */
+export function savedVersion(text: string | null): number | null {
+  if (typeof text !== 'string' || text.length === 0 || text.length > MAX_SAVE_LENGTH) return null;
+  try {
+    const raw: unknown = JSON.parse(text);
+    if (!isRecord(raw)) return null;
+    const v = raw['version'];
+    return typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -198,7 +226,7 @@ export function parseSave(text: string | null, prefersReducedMotion: boolean): S
   if (isRecord(progress)) {
     if (Array.isArray(progress['unlockedArenas'])) {
       for (const id of progress['unlockedArenas'].slice(0, MAX_ARENAS)) {
-        if (isId(id) && !unlocked.includes(id)) unlocked.push(id);
+        if (isArenaId(id) && !unlocked.includes(id)) unlocked.push(id);
       }
     }
     if (Array.isArray(progress['completed'])) {
@@ -206,7 +234,7 @@ export function parseSave(text: string | null, prefersReducedMotion: boolean): S
         if (isResultKey(k) && !completed.includes(k)) completed.push(k);
       }
     }
-    if (isId(progress['lastArena'])) lastArena = progress['lastArena'];
+    if (isArenaId(progress['lastArena'])) lastArena = progress['lastArena'];
     if (isDifficulty(progress['lastDifficulty'])) lastDifficulty = progress['lastDifficulty'];
     // Guardados anteriores no tienen estos campos: se quedan los valores por defecto.
     if (Array.isArray(progress['unlockedWeapons'])) {
@@ -233,7 +261,7 @@ export function parseSave(text: string | null, prefersReducedMotion: boolean): S
     let count = 0;
     for (const [k, v] of Object.entries(rawBest)) {
       if (count >= MAX_ENTRIES) break;
-      const key = isResultKey(k) ? k : isId(k) ? resultKey(k, 'normal') : null;
+      const key = isResultKey(k) ? k : isArenaId(k) ? resultKey(k, 'normal') : null;
       if (key === null) continue;
       const score = num(v, 0, MAX_SCORE, -1);
       if (score < 0) continue;

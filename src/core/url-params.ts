@@ -52,3 +52,19 @@ export function parseDebugParams(search: string): DebugParams {
   result.endless = params.get('mode') === 'resistencia';
   return result;
 }
+
+/**
+ * Una partida con cualquier ayuda de depuración activa no guarda progreso ni marcas.
+ * Incluye `?debug` (el overlay cambia daño, velocidad y otros valores en vivo) y `?arena=`
+ * (permite jugar una arena bloqueada).
+ */
+export function isAssisted(params: DebugParams): boolean {
+  return (
+    params.debug ||
+    params.god ||
+    params.stress ||
+    params.arena !== null ||
+    params.wave !== null ||
+    params.endless
+  );
+}

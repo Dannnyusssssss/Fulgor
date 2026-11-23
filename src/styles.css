@@ -196,6 +196,59 @@ body {
   border-color: var(--accent);
 }
 
+/* ---------- Avisos legales y borrado de datos ---------- */
+.btn-small {
+  font-size: 0.9rem;
+  padding: 6px 12px;
+}
+
+.btn-danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.legal-links {
+  margin-top: 18px;
+}
+
+.data-block {
+  margin: 18px 0 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.data-block .legal-links {
+  margin: 0 0 12px;
+}
+
+.confirm p {
+  margin: 0 0 10px;
+  line-height: 1.45;
+}
+
+.legal-body {
+  max-height: min(60vh, 520px);
+  overflow-y: auto;
+  margin: 0 0 16px;
+  padding-right: 8px;
+  line-height: 1.5;
+}
+
+.legal-body:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 4px;
+}
+
+.legal-body h2 {
+  font-size: 1.05rem;
+  margin: 16px 0 6px;
+  color: var(--accent);
+}
+
+.legal-body p {
+  margin: 0 0 10px;
+}
+
 .setting-row {
   display: flex;
   align-items: center;

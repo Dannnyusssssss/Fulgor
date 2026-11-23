@@ -13,6 +13,6 @@ Parámetros de URL solo para desarrollo. Están ocultos por defecto, se validan 
 
 Se pueden combinar: `?arena=fundicion-ambar&wave=6&god&debug`. Cualquier otro valor se ignora, igual que una cadena de búsqueda de más de 200 caracteres.
 
-Las partidas con `?god`, `?wave`, `?mode` o `?stress` no cuentan para el progreso (ni marcas ni desbloqueos).
+Una partida con cualquiera de estos parámetros (`?debug`, `?god`, `?stress`, `?arena`, `?wave` o `?mode`) no cuenta para el progreso: no guarda marcas, no completa arenas y no desbloquea nada. Así, ni el overlay ni elegir una arena bloqueada sirven para conseguir progreso.
 
 Los cambios hechos en el overlay solo duran hasta recargar la página; los valores definitivos se pasan a mano a `src/data/`.

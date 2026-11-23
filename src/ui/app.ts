@@ -16,7 +16,7 @@ import {
 import { emptyCommand, InputMapper } from '../core/input';
 import { FixedTimestep } from '../core/loop';
 import { clamp, damp, lerp } from '../core/math';
-import type { DebugParams } from '../core/url-params';
+import { isAssisted, type DebugParams } from '../core/url-params';
 import { ARENAS, arenaById, type ArenaDef } from '../data/arenas';
 import { BALANCE } from '../data/balance';
 import { PREVENT_DEFAULT_CODES } from '../data/controls';
@@ -57,7 +57,7 @@ import {
   recordRun,
 } from '../save/progress';
 import type { SaveData, Settings } from '../save/schema';
-import { writeSave, type StorageLike } from '../save/storage';
+import { clearSave, writeSave, type StorageLike } from '../save/storage';
 import { DebugOverlay } from './debug-overlay';
 import { GamepadReader } from './gamepad-dom';
 import { Hud } from './hud';
@@ -65,6 +65,7 @@ import { OffscreenIndicators } from './indicators';
 import {
   ClickOverlay,
   ErrorScreen,
+  InfoScreen,
   Notice,
   PauseScreen,
   PerkScreen,
@@ -72,6 +73,7 @@ import {
   SelectScreen,
   SettingsScreen,
   StartScreen,
+  type InfoKind,
   type PerkOption,
   type SelectHost,
   type SettingsHost,
@@ -159,6 +161,7 @@ class App implements SettingsHost, SelectHost {
   private readonly start: StartScreen;
   private readonly selectScreen: SelectScreen;
   private readonly settingsScreen: SettingsScreen;
+  private readonly info: InfoScreen;
   private readonly pause: PauseScreen;
   private readonly results: ResultsScreen;
   private readonly perkScreen: PerkScreen;
@@ -215,6 +218,7 @@ class App implements SettingsHost, SelectHost {
       this,
       () => this.showSelect(),
       () => this.openSettings('menu'),
+      (kind) => this.openInfo(kind, 'menu'),
     );
     this.selectScreen = new SelectScreen(
       ui,
@@ -222,7 +226,14 @@ class App implements SettingsHost, SelectHost {
       () => this.startRun(),
       () => this.showMenu(),
     );
-    this.settingsScreen = new SettingsScreen(ui, this, () => this.closeSettings());
+    this.settingsScreen = new SettingsScreen(
+      ui,
+      this,
+      () => this.closeSettings(),
+      (kind) => this.openInfo(kind, 'settings'),
+      () => this.clearData(),
+    );
+    this.info = new InfoScreen(ui);
     this.pause = new PauseScreen(
       ui,
       this,
@@ -405,6 +416,7 @@ class App implements SettingsHost, SelectHost {
     this.start.hide();
     this.selectScreen.hide();
     this.settingsScreen.hide();
+    this.info.hide();
     this.pause.hide();
     this.results.hide();
     this.perkScreen.hide();
@@ -525,6 +537,28 @@ class App implements SettingsHost, SelectHost {
     this.settingsScreen.show();
   }
 
+  /** Privacidad, términos o créditos; al volver se regresa a la pantalla desde la que se abrió. */
+  private openInfo(kind: InfoKind, from: 'menu' | 'settings'): void {
+    const back = from === 'menu' ? this.start : this.settingsScreen;
+    back.hide();
+    this.info.open(kind, () => {
+      this.info.hide();
+      back.show();
+    });
+  }
+
+  /**
+   * Borra el guardado de este navegador y recarga la página para empezar desde los valores por defecto
+   * (la recarga es del propio documento: no navega fuera del juego ni del iframe).
+   */
+  private clearData(): void {
+    if (!clearSave(this.opts.storage)) {
+      this.notice.show(TEXTS.legal.clearFailed, 6);
+      return;
+    }
+    window.location.reload();
+  }
+
   private closeSettings(): void {
     this.settingsScreen.hide();
     if (this.settingsReturn === 'menu') this.showMenu();
@@ -545,9 +579,8 @@ class App implements SettingsHost, SelectHost {
     this.hideScreens();
     this.hud.setVisible(false);
     this.reticle.setVisible(false);
-    // Las partidas de depuración (?stress, ?god, oleada inicial o ?mode) no cuentan para el progreso.
-    const d = this.opts.debug;
-    const counts = !d.stress && !d.god && d.wave === null && !d.endless;
+    // Las partidas con cualquier parámetro de depuración (incluidos ?debug y ?arena) no cuentan para el progreso.
+    const counts = !isAssisted(this.opts.debug);
     const arena = w.arena.def.id;
     const endless = w.mode === 'endless';
     let best = endless
@@ -667,7 +700,12 @@ class App implements SettingsHost, SelectHost {
         }
       }
       if (ev.code === 'KeyM') this.toggleMute();
-      else if (ev.code === 'KeyP' && this.state === 'paused' && !this.settingsScreen.visible) {
+      else if (
+        ev.code === 'KeyP' &&
+        this.state === 'paused' &&
+        !this.settingsScreen.visible &&
+        !this.info.visible
+      ) {
         this.resume();
       }
     });
@@ -770,7 +808,8 @@ class App implements SettingsHost, SelectHost {
     this.pollPad();
     const pad = this.pad;
     // Con el mando: Start continúa desde la pausa y la cruceta elige la mejora (sin pedir la captura del puntero).
-    if (this.state === 'paused' && pad.pause && !this.settingsScreen.visible) this.resume(false);
+    if (this.state === 'paused' && pad.pause && !this.settingsScreen.visible && !this.info.visible)
+      this.resume(false);
     else if (this.state === 'perks' && pad.weapon > 0) this.choosePerk(pad.weapon, false);
 
     if (this.state === 'playing') {

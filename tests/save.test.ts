@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { META } from '../src/data/meta';
 import { recordRun, bestFor, isUnlocked } from '../src/save/progress';
 import { defaultSave, parseSave, serializeSave } from '../src/save/schema';
-import { loadSave, writeSave, type StorageLike } from '../src/save/storage';
+import { clearSave, loadSave, writeSave, type StorageLike } from '../src/save/storage';
 
 class MemoryStorage implements StorageLike {
   data = new Map<string, string>();
@@ -11,6 +11,9 @@ class MemoryStorage implements StorageLike {
   }
   setItem(key: string, value: string): void {
     this.data.set(key, value);
+  }
+  removeItem(key: string): void {
+    this.data.delete(key);
   }
 }
 
@@ -56,8 +59,8 @@ describe('guardado', () => {
         quality: 'ultra',
         invertY: 1,
       },
-      best: { 'hangar-cobalto': -5, '<script>': 10, 'otra-arena': 300.7 },
-      progress: { unlockedArenas: ['hangar-cobalto', 7, 'fundicion-ambar', '../x'] },
+      best: { 'hangar-cobalto': -5, '<script>': 10, 'fundicion-ambar': 300.7, 'otra-arena': 50 },
+      progress: { unlockedArenas: ['hangar-cobalto', 7, 'fundicion-ambar', '../x', 'otra-arena'] },
       lastSeed: 1.5,
     });
     const s = parseSave(raw, false);
@@ -67,8 +70,8 @@ describe('guardado', () => {
     expect(s.settings.fov).toBe(75.5);
     expect(s.settings.quality).toBe('medium');
     expect(s.settings.invertY).toBe(false);
-    // Las claves sin dificultad (formato del Hito 1) se migran a Normal.
-    expect(s.best).toEqual({ 'otra-arena:normal': 300 });
+    // Las claves sin dificultad (formato del Hito 1) se migran a Normal; las arenas desconocidas se descartan.
+    expect(s.best).toEqual({ 'fundicion-ambar:normal': 300 });
     expect(s.progress.unlockedArenas).toEqual(['hangar-cobalto', 'fundicion-ambar']);
     expect(s.lastSeed).toBeNull();
   });
@@ -94,6 +97,9 @@ describe('guardado', () => {
       },
       setItem: () => {
         throw new Error('QuotaExceededError');
+      },
+      removeItem: () => {
+        throw new Error('SecurityError');
       },
     };
     expect(loadSave(null, false)).toEqual(defaultSave(false));
@@ -143,6 +149,99 @@ describe('guardado', () => {
     expect(s.progress.lastArena).toBe('hangar-cobalto');
     expect(s.progress.lastDifficulty).toBe('normal');
     expect(s.best).toEqual({ 'hangar-cobalto:hard': 10 });
+  });
+
+  it('descarta arenas que no existen en el juego', () => {
+    const s = parseSave(
+      JSON.stringify({
+        progress: {
+          unlockedArenas: ['hangar-cobalto', 'arena-falsa'],
+          completed: ['arena-falsa:easy', 'hangar-cobalto:hard'],
+          lastArena: 'arena-falsa',
+        },
+        best: { 'arena-falsa:normal': 999 },
+        bestEndless: { 'arena-falsa:normal': 5, 'hangar-cobalto:normal': 7 },
+      }),
+      false,
+    );
+    expect(s.progress.unlockedArenas).toEqual(['hangar-cobalto']);
+    expect(s.progress.completed).toEqual(['hangar-cobalto:hard']);
+    expect(s.progress.lastArena).toBe('hangar-cobalto');
+    expect(s.best).toEqual({});
+    expect(s.bestEndless).toEqual({ 'hangar-cobalto:normal': 7 });
+  });
+
+  it('no sobrescribe un guardado de una versión más nueva del juego', () => {
+    const storage = new MemoryStorage();
+    const future = JSON.stringify({ version: META.saveVersion + 1, futuro: true });
+    storage.setItem(META.saveKey, future);
+    const s = loadSave(storage, false);
+    expect(s.version).toBe(META.saveVersion);
+    expect(writeSave(storage, s)).toBe(false);
+    expect(storage.getItem(META.saveKey)).toBe(future);
+    // Uno de la versión actual, o ilegible, sí se sobrescribe.
+    storage.setItem(META.saveKey, '{roto');
+    expect(writeSave(storage, s)).toBe(true);
+    expect(writeSave(storage, s)).toBe(true);
+  });
+});
+
+describe('borrar datos guardados', () => {
+  it('borra solo la clave del juego y vuelve a los valores por defecto', () => {
+    const mem = new MemoryStorage();
+    const s = defaultSave(false);
+    s.settings.muted = true;
+    writeSave(mem, s);
+    mem.setItem('otro-juego:v1', 'x');
+    expect(clearSave(mem)).toBe(true);
+    expect(mem.getItem(META.saveKey)).toBeNull();
+    expect(mem.getItem('otro-juego:v1')).toBe('x');
+    expect(loadSave(mem, false)).toEqual(defaultSave(false));
+  });
+
+  it('sin almacenamiento o con acceso denegado devuelve false sin lanzar', () => {
+    expect(clearSave(null)).toBe(false);
+    const denied: StorageLike = {
+      getItem: () => null,
+      setItem: () => undefined,
+      removeItem: () => {
+        throw new Error('SecurityError');
+      },
+    };
+    expect(clearSave(denied)).toBe(false);
+  });
+});
+
+describe('guardado: entradas hostiles', () => {
+  it('__proto__ y constructor no contaminan objetos', () => {
+    const raw =
+      '{"__proto__":{"polluted":true},"constructor":{"prototype":{"polluted":true}},' +
+      '"best":{"__proto__":5,"constructor":7,"hangar-cobalto:normal":10},' +
+      '"settings":{"__proto__":{"muted":true}},"progress":{"__proto__":{"lastArena":"x"}}}';
+    const s = parseSave(raw, false);
+    expect(({} as Record<string, unknown>)['polluted']).toBeUndefined();
+    expect(Object.getPrototypeOf(s.best)).toBe(Object.prototype);
+    expect(s.best).toEqual({ 'hangar-cobalto:normal': 10 });
+    expect(s.settings.muted).toBe(false);
+    expect(s.progress.lastArena).toBe('hangar-cobalto');
+  });
+
+  it('anidamiento profundo, caracteres de control y emojis se rechazan sin romper', () => {
+    const deep = '['.repeat(5000) + ']'.repeat(5000);
+    expect(parseSave(`{"best":${deep}}`, false)).toEqual(defaultSave(false));
+    const s = parseSave(
+      JSON.stringify({
+        progress: {
+          unlockedArenas: ['hangar-cobalto\u0000', 'fundicion-ambar\n', '🔥', 'jardin-cristal'],
+          lastArena: 'jardin\u202ecristal',
+        },
+        best: { 'hangar-cobalto:normal\u0000': 1, '🔥:normal': 2 },
+      }),
+      false,
+    );
+    expect(s.progress.unlockedArenas).toEqual(['hangar-cobalto', 'jardin-cristal']);
+    expect(s.progress.lastArena).toBe('hangar-cobalto');
+    expect(s.best).toEqual({});
   });
 });
 

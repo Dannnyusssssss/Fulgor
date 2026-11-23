@@ -236,6 +236,129 @@ export const TEXTS = {
     barrera: 'Escudo temporal que absorbe daño.',
     senuelo: 'Holograma que atrae a las máquinas unos segundos.',
   },
+  legal: {
+    title: 'Datos y avisos legales',
+    privacy: 'Privacidad',
+    terms: 'Términos',
+    credits: 'Créditos',
+    back: 'Volver',
+    clearData: 'Borrar datos guardados en este navegador',
+    clearConfirm:
+      'Se borrarán los ajustes, el progreso y las mejores marcas guardados en este navegador, y el juego se reiniciará. No se puede deshacer.',
+    clearYes: 'Sí, borrar',
+    clearNo: 'Cancelar',
+    clearFailed:
+      'No se pudieron borrar los datos (el almacenamiento del navegador no está disponible). Puedes borrarlos desde la configuración de tu navegador.',
+    updated: 'Última actualización: 23 de noviembre de 2026.',
+    docs: {
+      privacy: {
+        title: 'Política de privacidad',
+        sections: [
+          {
+            heading: 'Responsable',
+            paragraphs: [
+              'Fulgor es un juego de Danny Sivinta (Quito, Ecuador). Contacto: cuartojuegos.contacto@gmail.com.',
+            ],
+          },
+          {
+            heading: 'Qué datos recolecta',
+            paragraphs: [
+              'Ninguno. El juego no tiene cuentas, formularios, chat, ranking en línea, publicidad, cookies ni analítica, y no envía información a ningún servidor mientras juegas.',
+            ],
+          },
+          {
+            heading: 'Qué se guarda en tu navegador',
+            paragraphs: [
+              'Para recordar tu partida, el juego guarda en el almacenamiento local de tu navegador (localStorage, con el nombre «fulgor:v1») tus ajustes, tu progreso (arenas y armas desbloqueadas), tus mejores marcas y la semilla de la última partida.',
+              'Estos datos se quedan en tu dispositivo: no se envían a nadie y el responsable no tiene acceso a ellos. Se conservan hasta que los borres con el botón «Borrar datos guardados en este navegador» de esta pantalla o desde la configuración de tu navegador.',
+            ],
+          },
+          {
+            heading: 'Alojamiento',
+            paragraphs: [
+              'El juego se descarga desde GitHub Pages, un servicio de GitHub, Inc., cuyos servidores pueden estar fuera de Ecuador. Como cualquier servidor web, puede registrar datos técnicos de la conexión, como la dirección IP, según su propia declaración de privacidad. El responsable no recibe esos datos.',
+            ],
+          },
+          {
+            heading: 'Tus derechos',
+            paragraphs: [
+              'La Ley Orgánica de Protección de Datos Personales de Ecuador te reconoce, entre otros, los derechos de acceso, rectificación y actualización, eliminación, oposición, portabilidad y suspensión del tratamiento. Como el juego no guarda datos tuyos fuera de tu navegador, puedes borrar todo lo guardado tú mismo en cualquier momento.',
+              'Para cualquier consulta sobre privacidad, escribe a cuartojuegos.contacto@gmail.com; se responderá dentro de los plazos que fija la ley. También puedes presentar un reclamo ante la Superintendencia de Protección de Datos Personales.',
+            ],
+          },
+          {
+            heading: 'Menores de edad',
+            paragraphs: [
+              'El juego puede usarlo cualquier persona, incluidos menores de edad, y no recolecta datos de nadie.',
+            ],
+          },
+        ],
+      },
+      terms: {
+        title: 'Términos de uso',
+        sections: [
+          {
+            heading: 'Uso',
+            paragraphs: [
+              'Fulgor es gratuito y se ofrece para uso personal y no comercial. Al jugarlo aceptas estos términos.',
+            ],
+          },
+          {
+            heading: 'Propiedad intelectual',
+            paragraphs: [
+              'El juego, su código, su arte, su sonido y su nombre pertenecen a Danny Sivinta. Todos los derechos reservados. No está permitido copiarlo, modificarlo ni distribuirlo sin permiso escrito. Los componentes de terceros conservan sus licencias (ver Créditos).',
+            ],
+          },
+          {
+            heading: 'Disponibilidad',
+            paragraphs: [
+              'El juego se ofrece tal como está. Puede cambiar, tener errores o dejar de estar disponible en cualquier momento.',
+            ],
+          },
+          {
+            heading: 'Datos',
+            paragraphs: [
+              'El juego no recolecta datos personales. Lo que guarda en tu navegador se explica en la política de privacidad.',
+            ],
+          },
+          {
+            heading: 'Contenido',
+            paragraphs: [
+              'Es un combate de fantasía contra máquinas, sin sangre ni imágenes explícitas. Tiene efectos de luz y movimiento rápido de cámara, que se pueden reducir en los ajustes.',
+            ],
+          },
+          {
+            heading: 'Ley aplicable y contacto',
+            paragraphs: [
+              'Estos términos se rigen por las leyes de Ecuador. Contacto: cuartojuegos.contacto@gmail.com.',
+            ],
+          },
+        ],
+      },
+      credits: {
+        title: 'Créditos',
+        sections: [
+          {
+            heading: 'Autor',
+            paragraphs: [
+              'Diseño, programación, arte y sonido: Danny Sivinta. El arte es geometría procedural y texturas dibujadas por código, y el sonido se sintetiza en el propio juego.',
+            ],
+          },
+          {
+            heading: 'Software de terceros',
+            paragraphs: [
+              'Three.js (render 3D), licencia MIT, © 2010-2026 three.js authors. Su aviso de licencia completo se incluye en los archivos del juego.',
+              'Hecho también con Vite y TypeScript, que no se incluyen en el juego publicado.',
+            ],
+          },
+          {
+            heading: 'Contacto',
+            paragraphs: ['cuartojuegos.contacto@gmail.com'],
+          },
+        ],
+      },
+    },
+  },
   errors: {
     noWebgl:
       'Tu navegador no puede mostrar gráficos 3D (WebGL no está disponible). Prueba con otro navegador o activa la aceleración por hardware.',

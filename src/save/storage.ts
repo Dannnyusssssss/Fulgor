@@ -3,12 +3,13 @@
  * accesos denegados, datos corruptos y cuota llena: el juego sigue funcionando con los valores en memoria.
  */
 import { META } from '../data/meta';
-import { parseSave, serializeSave, type SaveData } from './schema';
+import { parseSave, savedVersion, serializeSave, type SaveData } from './schema';
 
 /** Lo mínimo que se usa de la API Storage (permite probar con un almacenamiento falso). */
 export interface StorageLike {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
+  removeItem(key: string): void;
 }
 
 /** Devuelve localStorage si se puede usar, o null (por ejemplo en un iframe sin permisos o con cookies bloqueadas). */
@@ -33,11 +34,30 @@ export function loadSave(storage: StorageLike | null, prefersReducedMotion: bool
   return parseSave(text, prefersReducedMotion);
 }
 
-/** Guarda. Devuelve false si no se pudo (sin almacenamiento, acceso denegado o cuota llena). */
+/**
+ * Guarda. Devuelve false si no se pudo (sin almacenamiento, acceso denegado o cuota llena) o si el guardado
+ * existente es de una versión más nueva del juego: ese no se sobrescribe, para no perder datos que esta versión no entiende.
+ */
 export function writeSave(storage: StorageLike | null, data: SaveData): boolean {
   if (storage === null) return false;
   try {
+    const current = savedVersion(storage.getItem(META.saveKey));
+    if (current !== null && current > META.saveVersion) return false;
     storage.setItem(META.saveKey, serializeSave(data));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Borra el guardado del juego en este navegador (solo la clave `fulgor:v1`; nada más del origen).
+ * Devuelve false si no hay almacenamiento o el navegador no lo permite.
+ */
+export function clearSave(storage: StorageLike | null): boolean {
+  if (storage === null) return false;
+  try {
+    storage.removeItem(META.saveKey);
     return true;
   } catch {
     return false;

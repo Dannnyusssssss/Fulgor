@@ -3,7 +3,7 @@ import { FixedTimestep } from '../src/core/loop';
 import { Rng, createStreams, deriveSeed } from '../src/core/rng';
 import { Pool, type Poolable } from '../src/core/pool';
 import { SpatialHash } from '../src/core/spatial-hash';
-import { parseDebugParams } from '../src/core/url-params';
+import { isAssisted, parseDebugParams } from '../src/core/url-params';
 
 describe('FixedTimestep', () => {
   it('simula un paso por cada 1/60 s acumulado', () => {
@@ -200,5 +200,20 @@ describe('parseDebugParams', () => {
     expect(parseDebugParams('?wave=05&mode=oleadas')).toEqual(off);
     expect(parseDebugParams('?wave=0')).toEqual(off);
     expect(parseDebugParams('?wave=3.5&arena=A')).toEqual(off);
+  });
+
+  it('cualquier ayuda de depuración marca la partida como asistida (no guarda progreso)', () => {
+    expect(isAssisted(parseDebugParams(''))).toBe(false);
+    expect(isAssisted(parseDebugParams('?debug=no&x=1'))).toBe(false);
+    for (const search of [
+      '?debug',
+      '?god',
+      '?stress',
+      '?arena=jardin-cristal',
+      '?wave=3',
+      '?mode=resistencia',
+    ]) {
+      expect(isAssisted(parseDebugParams(search))).toBe(true);
+    }
   });
 });

@@ -16,6 +16,19 @@ export interface SettingsHost {
   update(patch: Partial<Settings>): void;
 }
 
+/** Textos legales que se muestran en la pantalla de información. */
+export type InfoKind = 'privacy' | 'terms' | 'credits';
+const INFO_KINDS: InfoKind[] = ['privacy', 'terms', 'credits'];
+
+/** Fila de botones para abrir privacidad, términos y créditos. */
+function legalButtons(onInfo: (kind: InfoKind) => void): HTMLElement {
+  const row = el('div', 'actions legal-links');
+  for (const kind of INFO_KINDS) {
+    row.append(button(TEXTS.legal[kind], () => onInfo(kind), 'btn btn-small'));
+  }
+  return row;
+}
+
 const QUALITIES: Quality[] = ['low', 'medium', 'high'];
 const QUALITY_LABEL: Record<Quality, string> = {
   low: TEXTS.settings.qualityLow,
@@ -65,7 +78,13 @@ abstract class Panel {
 }
 
 export class StartScreen extends Panel {
-  constructor(parent: HTMLElement, host: SettingsHost, onPlay: () => void, onSettings: () => void) {
+  constructor(
+    parent: HTMLElement,
+    host: SettingsHost,
+    onPlay: () => void,
+    onSettings: () => void,
+    onInfo: (kind: InfoKind) => void,
+  ) {
     super(parent, 'screen-start');
     const card = el('div', 'panel');
     card.append(el('h1', 'title', META.title), el('p', 'subtitle', TEXTS.start.subtitle));
@@ -86,7 +105,7 @@ export class StartScreen extends Panel {
     notice.append(el('h2', '', TEXTS.start.noticeTitle), el('p', '', TEXTS.start.notice));
     for (const t of comfortToggles(host)) notice.append(t);
     cols.append(controls, notice);
-    card.append(cols);
+    card.append(cols, legalButtons(onInfo));
     this.root.append(card);
   }
 }
@@ -97,6 +116,8 @@ export class SettingsScreen extends Panel {
     parent: HTMLElement,
     private readonly host: SettingsHost,
     private readonly onBack: () => void,
+    private readonly onInfo: (kind: InfoKind) => void,
+    private readonly onClearData: () => void,
   ) {
     super(parent, 'screen-settings');
     const card = el('div', 'panel');
@@ -191,9 +212,33 @@ export class SettingsScreen extends Panel {
         t.on,
         t.off,
       ),
+      this.dataBlock(),
       button(t.back, this.onBack, 'btn btn-primary'),
     );
     super.show();
+  }
+
+  /** Avisos legales y borrado de datos, con confirmación en la propia pantalla (sin diálogos del navegador). */
+  private dataBlock(): HTMLElement {
+    const l = TEXTS.legal;
+    const block = el('section', 'block data-block');
+    block.append(el('h2', '', l.title), legalButtons(this.onInfo));
+    const ask = button(l.clearData, () => setConfirming(true), 'btn btn-danger');
+    const confirm = el('div', 'confirm');
+    confirm.setAttribute('role', 'alertdialog');
+    confirm.setAttribute('aria-label', l.clearData);
+    const confirmActions = el('div', 'actions');
+    const no = button(l.clearNo, () => setConfirming(false));
+    confirmActions.append(button(l.clearYes, this.onClearData, 'btn btn-danger'), no);
+    confirm.append(el('p', '', l.clearConfirm), confirmActions);
+    const setConfirming = (on: boolean): void => {
+      setVisible(ask, !on);
+      setVisible(confirm, on);
+      (on ? no : ask).focus({ preventScroll: true });
+    };
+    confirm.hidden = true;
+    block.append(ask, confirm);
+    return block;
   }
 
   private qualityRow(): HTMLElement {
@@ -223,6 +268,47 @@ export class SettingsScreen extends Panel {
     refresh();
     row.append(group);
     return row;
+  }
+}
+
+/** Privacidad, términos o créditos: texto con desplazamiento y un botón para volver. */
+export class InfoScreen extends Panel {
+  private readonly title = el('h1', 'title-small');
+  private readonly body = el('div', 'legal-body');
+  private onBack: () => void = () => undefined;
+  constructor(parent: HTMLElement) {
+    super(parent, 'screen-info');
+    const card = el('div', 'panel');
+    // Región enfocable para poder desplazar el texto con el teclado.
+    this.body.tabIndex = 0;
+    card.append(
+      this.title,
+      this.body,
+      button(TEXTS.legal.back, () => this.onBack(), 'btn btn-primary'),
+    );
+    this.root.append(card);
+    this.root.addEventListener('keydown', (ev) => {
+      if (ev.code === 'Escape') {
+        ev.stopPropagation();
+        this.onBack();
+      }
+    });
+  }
+
+  open(kind: InfoKind, onBack: () => void): void {
+    const doc = TEXTS.legal.docs[kind];
+    this.onBack = onBack;
+    this.title.textContent = doc.title;
+    this.body.setAttribute('aria-label', doc.title);
+    const nodes: HTMLElement[] = [];
+    for (const section of doc.sections) {
+      nodes.push(el('h2', '', section.heading));
+      for (const p of section.paragraphs) nodes.push(el('p', '', p));
+    }
+    if (kind !== 'credits') nodes.push(el('p', 'hint', TEXTS.legal.updated));
+    this.body.replaceChildren(...nodes);
+    this.body.scrollTop = 0;
+    this.show();
   }
 }
 
