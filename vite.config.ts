@@ -39,10 +39,43 @@ ${text}
   };
 }
 
+/**
+ * Política de seguridad de contenido por <meta>, solo en el build (en desarrollo Vite inyecta estilos en línea).
+ * Todo el juego sale del propio origen: ni scripts ni estilos en línea, ni eval, ni recursos de terceros.
+ * Por <meta> no se pueden fijar frame-ancestors, HSTS ni Permissions-Policy: GitHub Pages no permite cabeceras propias.
+ */
+const CSP = [
+  "default-src 'none'",
+  "script-src 'self'",
+  "style-src 'self'",
+  "img-src 'self'",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+].join('; ');
+
+function securityMeta(): Plugin {
+  return {
+    name: 'security-meta',
+    apply: 'build',
+    transformIndexHtml(html) {
+      const charset = '<meta charset="UTF-8" />';
+      if (!html.includes(charset))
+        throw new Error('index.html: falta <meta charset> para colocar la CSP');
+      const extra = [
+        `<meta http-equiv="Content-Security-Policy" content="${CSP}" />`,
+        '<meta name="referrer" content="no-referrer" />',
+      ];
+      return html.replace(charset, [charset, ...extra].join('\n    '));
+    },
+  };
+}
+
 // base relativa: el juego funciona bajo cualquier ruta de GitHub Pages y dentro de un iframe.
 export default defineConfig({
   base: './',
-  plugins: [injectMeta(), threeLicenseBanner()],
+  plugins: [injectMeta(), threeLicenseBanner(), securityMeta()],
   build: {
     target: 'es2022',
     sourcemap: false,
