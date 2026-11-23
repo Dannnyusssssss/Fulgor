@@ -1,5 +1,5 @@
 /**
- * Utilidades compartidas por los tests: contexto de IA y colocación de enemigos.
+ * Utilidades compartidas por los tests: contexto de comportamiento y colocación de enemigos.
  */
 import { Rng } from '../src/core/rng';
 import type { ArenaDef } from '../src/data/arenas';
@@ -30,7 +30,7 @@ export function arenaFor(def: ArenaDef): Arena {
   return a;
 }
 
-/** Contexto de IA sin mundo completo, con el jugador en (px, pz). */
+/** Contexto de comportamiento sin mundo completo, con el jugador en (px, pz). */
 export function makeContext(
   def: ArenaDef,
   px: number,

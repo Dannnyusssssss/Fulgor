@@ -1,5 +1,5 @@
 /**
- * Sistema de enemigos: IA por tipo y efectos de sus ataques (embestida, proyectil, onda y rayo),
+ * Sistema de enemigos: comportamiento por tipo y efectos de sus ataques (embestida, proyectil, onda y rayo),
  * separación entre enemigos y hash espacial.
  */
 import { distSq, forwardInto, segmentCircleT, vec2, yawFromDir } from '../../core/math';
@@ -23,7 +23,7 @@ import { spawnAtPortal } from './director-system';
 
 const fwdScratch = vec2();
 
-/** Contexto de IA por mundo, creado una sola vez (no se crean objetos en cada paso). */
+/** Contexto de comportamiento por mundo, creado una sola vez (no se crean objetos en cada paso). */
 const contexts = new WeakMap<World, EnemyContext>();
 
 function contextFor(world: World): EnemyContext {

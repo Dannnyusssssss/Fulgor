@@ -79,7 +79,7 @@ export interface RngStreams {
   readonly waves: Rng;
   /** Ofertas de mejoras (Hito 3). */
   readonly perks: Rng;
-  /** Variaciones de combate (tiempos de IA, etc.). */
+  /** Variaciones de combate (tiempos de comportamiento, etc.). */
   readonly combat: Rng;
 }
 

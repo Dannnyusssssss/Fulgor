@@ -12,7 +12,7 @@ export const BALANCE = {
     maxFrameSeconds: 0.25,
   },
 
-  /** Duración mínima de cualquier aviso de ataque enemigo (ninguna IA puede atacar antes). */
+  /** Duración mínima de cualquier aviso de ataque enemigo (ningún comportamiento puede atacar antes). */
   telegraph: {
     minSeconds: 0.4,
   },

@@ -1,5 +1,5 @@
 /**
- * Piezas comunes de la IA de enemigos: contexto, banderas de resultado, persecución y giro limitado.
+ * Piezas comunes de el comportamiento de los enemigos: contexto, banderas de resultado, persecución y giro limitado.
  */
 import { damp, normalizeInto, wrapAngle, type Vec2 } from '../../core/math';
 import type { Rng } from '../../core/rng';
@@ -18,7 +18,7 @@ export interface AiTarget {
   alive: boolean;
 }
 
-/** Lo que la IA necesita del mundo (así se puede probar sin crear un mundo completo). */
+/** Lo que el comportamiento necesita del mundo (así se puede probar sin crear un mundo completo). */
 export interface EnemyContext {
   arena: Arena;
   /** Mapas de distancias para cuerpos pequeños y para cuerpos grandes. */
@@ -33,7 +33,7 @@ export interface EnemyContext {
   enemies: readonly Enemy[];
 }
 
-/** Resultado de un paso de IA, como banderas de bits (quien llama aplica los efectos). */
+/** Resultado de un paso de comportamiento, como banderas de bits (quien llama aplica los efectos). */
 export const EnemyFlag = {
   TelegraphStarted: 1,
   /** Una embestida tocó al jugador. */

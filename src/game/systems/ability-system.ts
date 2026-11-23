@@ -1,6 +1,6 @@
 /**
  * Sistema de habilidades: recarga, activación con Q y duración de la Barrera y el Señuelo.
- * También mantiene el objetivo de la IA (el jugador o el señuelo).
+ * También mantiene el objetivo del comportamiento (el jugador o el señuelo).
  */
 import { forwardInto, vec2 } from '../../core/math';
 import type { PlayerCommand } from '../../core/input';
@@ -117,7 +117,7 @@ function canBePushed(e: Enemy): boolean {
   return e.active && e.kind !== EnemyKind.Coloso;
 }
 
-/** El objetivo de la IA es el señuelo mientras dura y el jugador en otro caso. */
+/** El objetivo del comportamiento es el señuelo mientras dura y el jugador en otro caso. */
 export function syncTarget(world: World): void {
   const t = world.aiTarget;
   const d = world.ability.decoy;

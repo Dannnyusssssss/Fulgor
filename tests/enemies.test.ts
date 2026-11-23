@@ -13,21 +13,27 @@ import { NavField } from '../src/game/nav';
 import { arenaFor, makeContext, makeEnemy } from './helpers';
 
 const DT = 1 / 60;
-type Ai = (e: Enemy, ctx: EnemyContext, dt: number) => number;
+type Behavior = (e: Enemy, ctx: EnemyContext, dt: number) => number;
 
-function stepUntil(ai: Ai, e: Enemy, ctx: EnemyContext, pred: () => boolean, max = 600) {
+function stepUntil(
+  behavior: Behavior,
+  e: Enemy,
+  ctx: EnemyContext,
+  pred: () => boolean,
+  max = 600,
+) {
   let flags = 0;
   for (let i = 0; i < max; i++) {
-    flags |= ai(e, ctx, DT);
+    flags |= behavior(e, ctx, DT);
     if (pred()) return { steps: i + 1, flags };
   }
   return { steps: -1, flags };
 }
 
 /** Comprueba que, desde que empieza el aviso hasta el ataque, pasa al menos el mínimo global. */
-function attackAfterTelegraph(ai: Ai, e: Enemy, ctx: EnemyContext, attackFlag: number) {
+function attackAfterTelegraph(behavior: Behavior, e: Enemy, ctx: EnemyContext, attackFlag: number) {
   const start = stepUntil(
-    ai,
+    behavior,
     e,
     ctx,
     () => e.state === EnemyState.Windup || e.state === EnemyState.Track,
@@ -38,7 +44,7 @@ function attackAfterTelegraph(ai: Ai, e: Enemy, ctx: EnemyContext, attackFlag: n
   let steps = 0;
   let flags = 0;
   while (!(flags & attackFlag) && steps < 600) {
-    flags |= ai(e, ctx, DT);
+    flags |= behavior(e, ctx, DT);
     steps++;
   }
   expect(flags & attackFlag).toBeTruthy();

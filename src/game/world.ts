@@ -72,7 +72,7 @@ export interface World {
   readonly perks: PerkState;
   /** Hay elección de mejoras entre oleadas. */
   readonly perksEnabled: boolean;
-  /** Objetivo de la IA: copia de la posición del jugador o del señuelo. */
+  /** Objetivo del comportamiento: copia de la posición del jugador o del señuelo. */
   readonly aiTarget: AiTarget;
   readonly projectiles: Pool<Projectile>;
   readonly enemies: Pool<Enemy>;
@@ -198,8 +198,8 @@ export function createWorld(opts: WorldOptions): World {
 
 /**
  * Un paso fijo de simulación. Este es el único lugar donde se declara el orden de los sistemas:
- * 0. valores efectivos (datos + mejoras) → 1. jugador → 2. habilidad (y objetivo de la IA) → 3. armas
- * → 4. mapas de distancias → 5. IA de enemigos → 6. separación y hash → 7. proyectiles (daño y desactivaciones)
+ * 0. valores efectivos (datos + mejoras) → 1. jugador → 2. habilidad (y objetivo del comportamiento) → 3. armas
+ * → 4. mapas de distancias → 5. comportamiento de enemigos → 6. separación y hash → 7. proyectiles (daño y desactivaciones)
  * → 8. peligros de la arena → 9. zonas del Coloso → 10. objetos → 11. director de oleadas
  * → 12. prueba de rendimiento (solo con ?stress) → 13. derrota.
  */
@@ -218,7 +218,7 @@ export function stepWorld(world: World, cmd: PlayerCommand): void {
   updatePlayerSystem(world, cmd, dt);
   updateAbilitySystem(world, cmd, dt);
   updateWeaponSystem(world, cmd, dt);
-  // Los dos mapas se recalculan en pasos distintos para repartir el trabajo. Apuntan al objetivo de la IA.
+  // Los dos mapas se recalculan en pasos distintos para repartir el trabajo. Apuntan al objetivo del comportamiento.
   const every = BALANCE.nav.recomputeEverySteps;
   const target = world.aiTarget.pos;
   if (world.tick % every === 1) world.navSmall.recompute(target.x, target.z);
