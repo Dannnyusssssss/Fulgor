@@ -23,9 +23,9 @@ El aviso de licencia MIT de Three.js (Copyright © 2010-2026 three.js authors) s
 | vite | 8.3.6 | MIT | Servidor de desarrollo y empaquetado |
 | typescript | 6.0.3 | Apache-2.0 | Comprobación de tipos |
 | vitest | 5.1.0 | MIT | Tests |
-| eslint | 10.14.0 | MIT | Análisis estático |
+| eslint | 10.15.0 | MIT | Análisis estático |
 | @eslint/js | 10.0.1 | MIT | Reglas base de ESLint |
-| typescript-eslint | 8.72.1 | MIT | Reglas de ESLint para TypeScript |
+| typescript-eslint | 8.73.0 | MIT | Reglas de ESLint para TypeScript |
 | prettier | 3.9.10 | MIT | Formato de código |
 | eslint-config-prettier | 10.1.8 | MIT | Evita conflictos entre ESLint y Prettier |
 | globals | 17.14.0 | MIT | Listas de variables globales para ESLint |
@@ -34,14 +34,13 @@ El aviso de licencia MIT de Three.js (Copyright © 2010-2026 three.js authors) s
 
 El workflow `.github/workflows/deploy.yml` usa solo acciones oficiales de GitHub:
 
-| Acción | Versión | Licencia |
+| Acción | Versión (fijada por hash del commit) | Licencia |
 |---|---|---|
-| actions/checkout | v5 | MIT |
-| actions/setup-node | v5 | MIT |
-| actions/configure-pages | v5 | MIT |
-| actions/upload-pages-artifact | v4 | MIT |
-| actions/deploy-pages | v4 | MIT |
+| actions/checkout | v5.1.0 | MIT |
+| actions/setup-node | v5.0.0 | MIT |
+| actions/upload-pages-artifact | v4.0.0 | MIT |
+| actions/deploy-pages | v4.0.5 | MIT |
 
 ## Auditoría
 
-`npm audit` informa una única vulnerabilidad de severidad moderada en `minimatch` (que el informe cuenta 10 veces, una por cada paquete de ESLint que la arrastra) (GHSA-g3hv-75wg-m249, denegación de servicio con patrones glob), que llega solo a través de las herramientas de desarrollo ESLint y typescript-eslint. No se incluye en `dist/` y solo procesa patrones escritos en la configuración del propio proyecto. No hay vulnerabilidades altas ni críticas. `npm audit --omit=dev` (lo que se publica): 0 vulnerabilidades. Última revisión: 2026-11-07.
+`npm audit`: 0 vulnerabilidades, tanto en lo que se publica (`npm audit --omit=dev`) como en las herramientas de desarrollo. La vulnerabilidad moderada de `minimatch` (GHSA-g3hv-75wg-m249), que llegaba solo a través de ESLint y typescript-eslint, quedó corregida al actualizar esas dos herramientas. El workflow de publicación vuelve a auditar en cada push: falla con cualquier vulnerabilidad en lo que se publica y con cualquier vulnerabilidad alta o crítica en las herramientas de desarrollo. Última revisión: 2026-11-23.
