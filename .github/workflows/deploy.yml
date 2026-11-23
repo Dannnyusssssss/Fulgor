@@ -1,5 +1,6 @@
-# Comprueba el proyecto (lint, tests y build) y publica dist/ en GitHub Pages.
+# Comprueba el proyecto (auditoría de dependencias, lint, tests y build) y publica dist/ en GitHub Pages.
 # Requisito en el repositorio: Settings → Pages → Source: "GitHub Actions".
+# Las acciones van fijadas por el hash completo del commit (la etiqueta de la versión, en el comentario).
 name: Publicar en GitHub Pages
 
 on:
@@ -7,11 +8,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Permisos mínimos: leer el código y publicar en Pages.
+# Por defecto, solo lectura. El permiso de publicar se da únicamente al job que publica.
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 # Una sola publicación a la vez; no se cancela una que ya está en curso.
 concurrency:
@@ -21,18 +20,29 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Descargar el código
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
 
       - name: Preparar Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
-          node-version: 24
+          node-version: 24.21.0
           cache: npm
 
-      - name: Instalar dependencias (versiones exactas del lockfile)
-        run: npm ci
+      # Versiones exactas del lockfile y sin scripts de instalación de terceros.
+      - name: Instalar dependencias
+        run: npm ci --ignore-scripts
+
+      # Lo que se publica no puede tener ninguna vulnerabilidad conocida; las herramientas de desarrollo, ninguna alta o crítica.
+      - name: Auditar dependencias
+        run: |
+          npm audit --omit=dev --audit-level=low
+          npm audit --audit-level=high
 
       - name: Lint
         run: npm run lint
@@ -43,21 +53,21 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Configurar Pages
-        uses: actions/configure-pages@v5
-
       - name: Subir dist/
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4.0.0
         with:
           path: dist
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Publicar
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5

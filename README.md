@@ -67,7 +67,7 @@ Tecnología: TypeScript, Three.js (WebGL) y Vite. La lógica del juego es indepe
 
 ## Publicación
 
-El workflow `.github/workflows/deploy.yml` corre lint, tests y build en cada push a `main` y publica `dist/` en GitHub Pages. Para activarlo, en el repositorio: **Settings → Pages → Source: GitHub Actions**.
+El workflow `.github/workflows/deploy.yml` audita las dependencias y corre lint, tests y build en cada push a `main`; si todo pasa, publica `dist/` en GitHub Pages. Las acciones van fijadas por hash y solo el job de publicación tiene permiso de escritura. Para activarlo, en el repositorio: **Settings → Pages → Source: GitHub Actions**.
 
 `dist/` es estático y usa rutas relativas, así que funciona en cualquier hosting estático y dentro de un iframe.
 
